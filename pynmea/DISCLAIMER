@@ -1,0 +1,10 @@
+This code is from the pynmea project, 
+code.google.com/p/pynmea
+
+released under the MIT License.
+
+Version 0.6.0, downloaded 10/9/2012
+
+Code has been modified by Rusty Holleman, rustychris@gmail.com, to understand RDENS
+sentences present in WinRiver n files.
+
