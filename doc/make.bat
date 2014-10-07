@@ -46,6 +46,7 @@ if "%1" == "clean" (
 	goto end
 )
 
+call makeapi
 
 %SPHINXBUILD% 2> nul
 if errorlevel 9009 (
