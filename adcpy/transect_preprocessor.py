@@ -97,13 +97,13 @@ def transect_preprocessor(option_file=None):
     shutil.copyfile(option_file, os.path.join(outpath,option_file))
 
     hc_count = 0
-    if headCorrect_spanning and (len(data_files) > 1):
-        # bin data rquired for headCorrect form input files
+    if head_correct_spanning and (len(data_files) > 1):
+        # bin data rquired for head_correct form input files
         mtime_a = None
         mtime_b = None
         reference_heading = None
         is_a = list()
-        print 'Gathering data from data_files for headCorrect spanning...'
+        print 'Gathering data from data_files for head_correct spanning...'
         for data_file in data_files:
             path, fname = os.path.split(data_file)
             
@@ -112,7 +112,7 @@ def transect_preprocessor(option_file=None):
                             file_type="ADCPRdiWorkhorseData",
                             num_av=1,
                             adcp_depth=adcp_depth)
-            m1,h1,bt1,xy1 = a.copy_headCorrect_vars(xy_srs=xy_projection)
+            m1,h1,bt1,xy1 = a.copy_head_correct_vars(xy_srs=xy_projection)
             
             if reference_heading is None:
                 reference_heading = ssm.circmean(h1*np.pi/180.)*180./np.pi
@@ -140,14 +140,14 @@ def transect_preprocessor(option_file=None):
                     break           
 #            except:
                 
-#                print 'Failure reading %s for headCorrect spanning!'%fname                    
+#                print 'Failure reading %s for head_correct spanning!'%fname                    
 #                is_a.append('True')
                
         print 'Number direction a headings:',np.shape(mtime_a)
 
         # this method is independent of self/a
         #try: 
-        heading_correction_a = ADCPy.util.fit_headCorrect(mtime_in=mtime_a,
+        heading_correction_a = ADCPy.util.fit_head_correct(mtime_in=mtime_a,
                                    hdg_in=heading_a,
                                    bt_vel_in=bt_vel_a,
                                    xy_in=xy_a,
@@ -155,12 +155,12 @@ def transect_preprocessor(option_file=None):
                                    hdg_bin_size=hdg_bin_size,
                                    hdg_bin_min_samples=hdg_bin_min_samples)
 #        except:
-#                print 'Failure fitting headCorrect spanning!'
+#                print 'Failure fitting head_correct spanning!'
 #                if mag_declination is not None:
 #                    print 'Using simple magnetic declination correction instead'
 #                    heading_correction_a = None
 #                else:
-#                    print 'No magnetic declination value found - headCorrect failure.'
+#                    print 'No magnetic declination value found - head_correct failure.'
 #                    print 'exiting'
 #                    exit()
                   
@@ -189,7 +189,7 @@ def transect_preprocessor(option_file=None):
             a.write_nc(fname,zlib=zlib)
 
         # setup for heading correction based
-        if headCorrect_spanning and (len(data_files) > 1):        
+        if head_correct_spanning and (len(data_files) > 1):        
             heading_cf = heading_correction_a
         else:
             heading_cf = None

@@ -43,7 +43,7 @@ avg_plot_xy                    = True         # Generate a composite plot of sur
 avg_plot_avg_n_sd              = True         # Generate image plots of bin-averaged U,V,W velocities, and the number and standard deviation of bin averages
 avg_plot_mean_vectors          = True         # Generate an arrow plot of bin-averaged U-V mean velocities in the x-y plane
 avg_plot_secondary_circulation = True         # Generate an image plot of 2D bin-averaged steamwise (u) velocities, overlain by an arrow plot showing secondary circulation in the V-W plane
-avg_plot_UVW_velocity_array    = True         # Generate a 3-panel image plot showing bin-averaged U,V,W velocities in the V-W plane
+avg_plot_uvw_velocity_array    = True         # Generate a 3-panel image plot showing bin-averaged U,V,W velocities in the V-W plane
 avg_plot_flow_summmary         = True         # Generate a summary plot showing image plots of U,V bin-averaged velocities, an arrow plot of bin-averaged U-V mean velocities, and flow/discharge calculations
 avg_save_plots                 = True         # Save the plots to disk 
 avg_show_plots                 = False        # Print plots to screen (pauses execution until plots are manually closed)
@@ -109,7 +109,7 @@ def transect_average(pre_process_input_file=None):
             avg.write_nc(fname,zlib=True)
         
         if avg_plot_avg_n_sd:
-            uvw = 'UVW'
+            uvw = 'uvw'
             for i in range(3):
                 plot_avg_n_sd(avg,i,0.05)
                 if avg_save_plots:
@@ -126,12 +126,12 @@ def transect_average(pre_process_input_file=None):
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_secondary_circulation.png"%grp_num))
 
-        if avg_plot_UVW_velocity_array:
-            fig5 = adcpy.plot.plot_UVW_velocity_array(avg.velocity,
+        if avg_plot_uvw_velocity_array:
+            fig5 = adcpy.plot.plot_uvw_velocity_array(avg.velocity,
                                                       title='Group%03i Velocity [m/s]'%grp_num,
                                                       ures=0.1,vres=0.1,wres=0.05)
             if avg_save_plots:
-                plt.savefig(os.path.join(outpath,"group%03i_UVW_velocity.png"%grp_num))
+                plt.savefig(os.path.join(outpath,"group%03i_uvw_velocity.png"%grp_num))
 
         if avg_plot_flow_summmary:
             fig6 = adcpy.plot.plot_flow_summmary(avg,title='Group%03i Streawise Summary'%grp_num,
@@ -148,7 +148,7 @@ def transect_average(pre_process_input_file=None):
 
 
 def plot_avg_n_sd(avg,uvw,resolution=0.1):
-    """
+    """Generate figure with binned velocity, number of samples and standard deviation
     Generates a vertical three-panel plot, showing images of a bin-averaged
     velocity, the number of velociy measurements in each bin, and the bin standard
     deviation velocity.  Desinged to be used in conjuction with 
@@ -174,7 +174,7 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
     minv = np.nanmin(np.nanmin(mtest))*resolution
     mtest = np.ceil(avg.velocity[...,uvw]*inv)    
     maxv = np.nanmax(np.nanmax(mtest))*resolution
-    avg_panel = adcpy.plot.i_panel(velocity = avg.velocity[:,:,uvw],
+    avg_panel = adcpy.plot.IPanel(velocity = avg.velocity[:,:,uvw],
                              x = dd,
                              y = avg.bin_center_elevation,
                              minv = minv,
@@ -185,7 +185,7 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
                              use_pcolormesh = True,
                              title='%s Averaged Velocity [m/s]'%v_str)
     maxv = np.nanmax(np.nanmax(avg.velocity_n[...,uvw]))
-    n_panel = adcpy.plot.i_panel(velocity = avg.velocity_n[:,:,uvw],
+    n_panel = adcpy.plot.IPanel(velocity = avg.velocity_n[:,:,uvw],
                              x = dd,
                              y = avg.bin_center_elevation,
                              minv = 0,
@@ -199,7 +199,7 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
     minv = np.nanmin(np.nanmin(mtest))*resolution
     mtest = np.ceil(avg.velocity_sd[...,uvw]*inv)    
     maxv = np.nanmax(np.nanmax(mtest))*resolution
-    sd_panel = adcpy.plot.i_panel(velocity = avg.velocity_sd[:,:,uvw],
+    sd_panel = adcpy.plot.IPanel(velocity = avg.velocity_sd[:,:,uvw],
                              x = dd,
                              y = avg.bin_center_elevation,
                              minv = 0,

@@ -21,7 +21,7 @@ working_directory = r'C:\Delta\ADCPy\GEO20090116'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WGA20090722'        # or None for current directory
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\TMS20090513'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\JPT20080618'
-#working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU022510' # can't headcorrect, not enough bins
+#working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU022510' # can't head_correct, not enough bins
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU012810'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU060408' # no nav
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU112707' # no nav
@@ -32,10 +32,10 @@ working_directory = r'C:\Delta\ADCPy\GEO20090116'
 # Processing Options
 # -----------------------------------------------------------------------------
 xy_projection = r'EPSG:26910' # The text-based EPSG code describing the map projection (in Northern CA, UTM Zone 10N = 'EPSG:26910')
-do_headCorrect = False         # Switch for using/not using heading correction due to magnetic compass declination and errors. {True or False}
-headCorrect_spanning = False   # perform heading correction on all data files binned together {True or False}
+do_head_correct = False         # Switch for using/not using heading correction due to magnetic compass declination and errors. {True or False}
+head_correct_spanning = False   # perform heading correction on all data files binned together {True or False}
 mag_declination = 14.7          # magnetic compass declination - this value will be used to correct compass heading if head_correcting is not used {degrees E of true North, or None}
-u_min_bt=0.3                  # minimum bottom track velocity for headCorrect {typically 0-0.3 [m/s] or None}
+u_min_bt=0.3                  # minimum bottom track velocity for head_correct {typically 0-0.3 [m/s] or None}
 hdg_bin_size=5                # bin size of heading correction {typically 5,10 [degrees]}
 hdg_bin_min_samples=10        # minimum number of sample headings in a heading bin for consideration in heading correction {typically 10-50, more is safer}
 sidelobe_drop=0.1             # fraction of vertical profile to drop due to sidelobe/bottom interaction {typically 0.5-0.15 [fraction]}

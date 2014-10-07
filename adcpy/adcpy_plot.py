@@ -5,7 +5,7 @@ adcpy_plot
 Tools for visualizing ADCP data that is read and processed by the adcpy module
 This module is imported under the main adcpy, and should be available as 
 adcpy.plot. Some methods can be used to visualize flat arrays, independent of
-adcpy, and the plots may be created quickly using the i_panel and q_panel 
+adcpy, and the plots may be created quickly using the IPanel and QPanel 
 classes.
 
 This code is open source, and defined by the included MIT Copyright License 
@@ -23,9 +23,9 @@ from matplotlib.dates import num2date#,date2num,
 import adcpy
 from adcpy_recipes import calc_transect_flows_from_uniform_velocity_grid
 
-U_str = 'U'
-V_str = 'V'
-W_str = 'W'
+U_str = 'u'
+V_str = 'v'
+W_str = 'w'
 vel_strs = (U_str,V_str,W_str)
 
 
@@ -34,11 +34,11 @@ def fmt_dnum(dn):
     return num2date(dn).strftime('%c')
 
 
-class i_panel(object):
+class IPanel(object):
     """
     This object stores and plots a 2D velocity map as an image.  Any of the data
     fields  (kwarg_options) may be specificed as kwargs during initialization. 
-    At minimum i_panel requires 'velocity' to be set.
+    At minimum IPanel requires 'velocity' to be set.
     """
     kwarg_options = ['use_pcolormesh',
                      'minv',      
@@ -80,7 +80,7 @@ class i_panel(object):
         
     def plot(self,ax=None):
         """
-        Plots the data in i_panel onto the axis ax, or if ax is None,
+        Plots the data in IPanel onto the axis ax, or if ax is None,
         onto self.my_axes.
         Inputs:
             ax = matplotlib axes object, or None
@@ -154,11 +154,11 @@ class i_panel(object):
         plt.colorbar(pc, use_gridspec=True)
 
 
-class q_panel(object):
+class QPanel(object):
     """
     This object stores and plots a 1D or 2D velocity map as a quiver plot.  Any 
     of the data fields (kwarg_options) may be specificed as kwargs during 
-    initialization.  At minimum q_panel requires 'velocity' to be set.
+    initialization.  At minimum QPanel requires 'velocity' to be set.
     """
     kwarg_options = ['u_vecs',
                      'v_vecs',
@@ -199,7 +199,7 @@ class q_panel(object):
 
     def plot(self,ax=None):
         """
-        Plots the data in q_panel onto the axis ax, or if ax is None,
+        Plots the data in QPanel onto the axis ax, or if ax is None,
         onto self.my_axes.
         Inputs:
             ax = matplotlib axes object, or None
@@ -360,17 +360,17 @@ def find_plot_min_max_from_velocity(velocity_2d,res=None,equal_res_about_zero=Tr
 
 def get_basic_velocity_panel(velocity_2d,res=None,equal_res_about_zero=True):
     """
-    Returns an i_panel with from a 2D velocity array.
+    Returns an IPanel with from a 2D velocity array.
     Inputs:
         nparray = array of numbers for which bounds are needed
         res = number of which the bounds will be rounded up toward
         equal_res_about_zero = toggle to switch [True/False]
     Returns:
-        i_panel onject 
+        IPanel onject 
     """
     minv, maxv = find_plot_min_max_from_velocity(velocity_2d,res,
                                                  equal_res_about_zero)
-    return i_panel(velocity = velocity_2d,
+    return IPanel(velocity = velocity_2d,
                    x = None,
                    y = None,
                    minv = minv,
@@ -378,7 +378,7 @@ def get_basic_velocity_panel(velocity_2d,res=None,equal_res_about_zero=True):
                    units = 'm/s')
     
 
-def plot_UVW_velocity_array(velocity,fig=None,title=None,ures=None,vres=None,wres=None,
+def plot_uvw_velocity_array(velocity,fig=None,title=None,ures=None,vres=None,wres=None,
                             equal_res_about_zero=True):
     """
     Generates a figure with three panels showing U,V,W velocity from a single 3D
@@ -408,8 +408,8 @@ def plot_UVW_velocity_array(velocity,fig=None,title=None,ures=None,vres=None,wre
 
 def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
     """
-    Generates a with a single panel, plotting U velocity as an i_panel, overlain by
-    VW vectors from a q_panel.
+    Generates a with a single panel, plotting U velocity as an IPanel, overlain by
+    VW vectors from a QPanel.
     Inputs:
         adcp = ADCPData object
         u_vecs,v_vecs = desired number of horizontal/vertical vectors [integers]
@@ -427,7 +427,7 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
     stream_wise.x = dd
     stream_wise.y = adcp.bin_center_elevation
     stream_wise.chop_off_nans = True
-    secondary = q_panel(velocity = adcp.velocity[:,:,1:],
+    secondary = QPanel(velocity = adcp.velocity[:,:,1:],
                       x = dd,
                       y = adcp.bin_center_elevation,
                       xpand = None,
@@ -444,16 +444,16 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
 
 def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_panel=False):
     """
-    Generates a q_panel, plotting mean UV velocity vectors in the x-y plane.
+    Generates a QPanel, plotting mean UV velocity vectors in the x-y plane.
     Inputs:
         adcp = ADCPData object
         fig = input figure number [integer or None]
         title = figure title text [string or None]
         n_vectors = desired number of vectors [integer]
-        return_panel = optinally return the q_panel instead of the figure
+        return_panel = optinally return the QPanel instead of the figure
     Returns:
         fig = matplotlib figure object, or
-        vectors = q_panel object
+        vectors = QPanel object
     """        
     xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
     dude = np.zeros((adcp.n_ensembles,2),np.float64)
@@ -461,7 +461,7 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
     # this doesn't factor in depth, may integrate bad values if the have not been filtered into NaNs somehow
     dude[:,0] = sp.nanmean(velocity[:,:,0],axis=1)
     dude[:,1] = sp.nanmean(velocity[:,:,1],axis=1)
-    vectors = q_panel(velocity = dude,
+    vectors = QPanel(velocity = dude,
                       x = adcp.xy[:,0],
                       y = adcp.xy[:,1],
                       #v_scale = 25,
@@ -538,7 +538,7 @@ def plot_xy_line(adcp,fig=None,title=None,use_stars_at_xy_locations=True):
     return fig
     
 
-def plot_UVW_velocity(adcp,UVW='UVW',fig=None,title=None,ures=None,vres=None,wres=None,
+def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wres=None,
                             equal_res_about_zero=True,return_panels=False):
     """
     Produces a quick plot of the adcp ensemble x-y locations, from an ADCPData
@@ -561,7 +561,7 @@ def plot_UVW_velocity(adcp,UVW='UVW',fig=None,title=None,ures=None,vres=None,wre
     if adcp.mtime is not None:
         if np.size(adcp.mtime) == adcp.n_ensembles:
             dt = adcp.mtime
-    ax = adcpy.util.get_axis_num_from_str(UVW)
+    ax = adcpy.util.get_axis_num_from_str(uvw)
     
     for i in ax:
         if i == ax[0] and title is not None:
@@ -620,7 +620,7 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     vectors = plot_ensemble_mean_vectors(adcp,n_vectors=30,return_panel=True)
     vectors.x = vectors.x - np.min(vectors.x)
     vectors.y = vectors.y - np.min(vectors.y)
-    u_panel,v_panel = plot_UVW_velocity(adcp,UVW='UV',fig=fig,ures=ures,
+    u_panel,v_panel = plot_uvw_velocity(adcp,uvw='UV',fig=fig,ures=ures,
                                         vres=vres,return_panels=True)
     
     u_panel.chop_off_nans = True

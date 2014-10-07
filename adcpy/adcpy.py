@@ -941,9 +941,9 @@ class ADCPTransectData(ADCPData):
             # need double array here so future transposes work
             self.bt_depth = np.array([grp.variables['bt_depth'][...]])
             
-    def copy_headCorrect_vars(self,xy_srs=None):
+    def copy_head_correct_vars(self,xy_srs=None):
         """
-        Returns the raw data required to perform a headCorrection of a moving
+        Returns the raw data required to perform a head_correction of a moving
         ADCP platform (i.e. a boat)
         Inputs:
             xy_srs = EPSG code [str] if projection to xy is desired, or None            
@@ -971,7 +971,7 @@ class ADCPTransectData(ADCPData):
             print "Error in heading_correct: self.heading must be assigned"
             print "Heading correcting not performed"            
             return 
-        delta = util.find_headCorrect(self.heading,            # delta is in degrees  
+        delta = util.find_head_correct(self.heading,            # delta is in degrees  
                                     cf=cf,
                                     u_min_bt=u_min_bt,
                                     hdg_bin_size=hdg_bin_size,

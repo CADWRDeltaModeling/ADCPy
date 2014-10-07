@@ -379,9 +379,9 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 
 def get_axis_num_from_str(axes_string):
     """
-    U,V,W correspond to 0,1,2 in the trailing axis of adcpy velocity arrays.
+    u,v,w correspond to 0,1,2 in the trailing axis of adcpy velocity arrays.
     This method returns a list of 0,1, and 2s corresponding to an input 
-    string composed U,V, and Ws.
+    string composed u,v, and ws.
     Inputs:
         axes_string = string composed of U V or W only [str]
     Returns:
@@ -392,14 +392,15 @@ def get_axis_num_from_str(axes_string):
         raise
     ax_list = []
     for char in axes_string:
-        if char not in 'UVW':
-            ValueError("axes_string letters must be U,V, or W only")
+        if char in 'UVW': char = char.lower()
+        if char not in 'uvw':
+            ValueError("axes_string letters must be u,v, or w only")
             raise
-        if char == 'U':
+        if char == 'u':
             ax_list.append(0)
-        elif char == 'V':
+        elif char == 'v':
             ax_list.append(1)
-        elif char == 'W':
+        elif char == 'w':
             ax_list.append(2)
     return ax_list
             
@@ -1223,7 +1224,7 @@ def distance_betweeen_point_clouds(xy1,xy2):
     return find_line_distance(centroid(xy1),centroid(xy2))
 
 
-def fit_headCorrect(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
+def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
                 hdg_bin_size=None,hdg_bin_min_samples=None):      
     """
     Using raw data, generates a heading correction for a moving
@@ -1313,7 +1314,7 @@ def fit_headCorrect(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     
     #print hdg_nav
     
-    # toss data that looks like noise [commented out in headCorrect.m]
+    # toss data that looks like noise [commented out in head_correct.m]
     # nn=find(~(heada>266 & hdn>266 & hdbt<245));
     # heada = heada(nn) ; hdbt = hdbt(nn) ; hdn = hdn(nn) ; na=na(nn);
     
@@ -1378,7 +1379,7 @@ def fit_headCorrect(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     hdg_bt_bin_mean[nn]=hdmi2
     
     if sum(~np.isnan(hdg_bt_bin_mean)) < 3:
-        print "Not enough valid heading bins for headCorrect."
+        print "Not enough valid heading bins for head_correct."
         print "Try reducing hdg_bin_size and/or hdg_bin_min_samples"
         exit()
     
@@ -1407,7 +1408,7 @@ def fit_headCorrect(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     return cf        
     
 
-def find_headCorrect(hdg_in,                
+def find_head_correct(hdg_in,                
                     cf=None,
                     u_min_bt=None,
                     hdg_bin_size=None,
@@ -1448,12 +1449,12 @@ def find_headCorrect(hdg_in,
         else: 
             print 'Warning: attemping to fit heading correcton based on single file.'
             try:
-                cf = fit_headCorrect(mtime_in,hdg_in,bt_vel_in,xy_in,
+                cf = fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,
                                      u_min_bt=u_min_bt,
                                      hdg_bin_size=hdg_bin_size,
                                      hdg_bin_min_samples=hdg_bin_min_samples)
             except:
-                print 'HeadCorrect fitting failure - heading correction not performed!'
+                print 'head_correct fitting failure - heading correction not performed!'
                 return 0.0
         
     return cf[0] + cf[1]*np.cos((np.pi/180)*hdg_in) + cf[2]*np.sin((np.pi/180)*hdg_in)
