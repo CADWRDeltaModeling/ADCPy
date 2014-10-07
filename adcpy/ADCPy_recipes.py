@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-ADCPy_recipes
+adcpy_recipes
 
-Tools and methods for cateogizing/manipulating/visualizing data in ADCPy/ADCP_Data
-format.  This module is dependent upon ADCPy. 
+Tools and methods for cateogizing/manipulating/visualizing data in ADCPy/ADCPData
+format.  This module is dependent upon adcpy. 
 
 This code is open source, and defined by the included MIT Copyright License 
 
@@ -19,21 +19,21 @@ import scipy.stats.morestats as ssm
 from matplotlib.dates import num2date#,date2num,
 import datetime
 
-import ADCPy
+import adcpy
 
-def average_transects(transects,dxy,dz,plotline=None,return_ADCPy=True,stats=True):
+def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,stats=True):
     """ 
     This method takes a list of input ADCPy transect objects, and:
     1) Projects and re-grids each transect to either the input plotline, or a best
        fit of available projected xy locations;
-    2) Bin-averages the re-gridded U,V, and W velocities of input ADCP_Transect_Data
+    2) Bin-averages the re-gridded U,V, and W velocities of input ADCPTransectData
        objects
     Inputs:
-        transects = list of ADCP_Transect_Data objects
+        transects = list of ADCPTransectData objects
         dxy = new grid spacing in the xy (or plotline) direction
         dz = new regular grid spacing in the z direction (downward for transects)
         plotline = optional dsignated line in the xy plane for projecting ensembles onto
-        return_ADCPy = True: returns an ADCP_Data object containing averaged velocities
+        return_adcpy = True: returns an ADCPData object containing averaged velocities
                        False: returns a 3D numpy array containing U,V,W gridded veloctiy
     """    
     n_transects = len(transects)
@@ -42,10 +42,10 @@ def average_transects(transects,dxy,dz,plotline=None,return_ADCPy=True,stats=Tru
         # ugly brute-force method ot find furthest points;  
         # ConvexHull-type approach is only available in more recent scipy
         max_dist = 0.0
-        centers = [ADCPy.util.centroid(a.xy) for a in transects]
+        centers = [adcpy.util.centroid(a.xy) for a in transects]
         for c1 in centers:
             for c2 in centers:
-                max_dist = max(max_dist,ADCPy.util.find_line_distance(c1,c2))
+                max_dist = max(max_dist,adcpy.util.find_line_distance(c1,c2))
         print "max dist:",max_dist
         if max_dist > 30.0:
             print 'WARNING: averaging transects with maximum centroid distance of %f m!'%max_dist
@@ -56,16 +56,16 @@ def average_transects(transects,dxy,dz,plotline=None,return_ADCPy=True,stats=Tru
     
     # find common grid
     if plotline is None:    
-        xy_line = ADCPy.util.map_xy_to_line(xy_data)
+        xy_line = adcpy.util.map_xy_to_line(xy_data)
     else:
         xy_line = plotline
     # NEED logic around determining whether original data was negative down, positive up, etc
     z_mm = np.array([np.max(z_data),np.min(z_data)])
-    (dd,xy_new_range,xy_new,z_new) = ADCPy.util.new_xy_grid(xy_data,z_mm,dxy,dz,xy_line)  
+    (dd,xy_new_range,xy_new,z_new) = adcpy.util.new_xy_grid(xy_data,z_mm,dxy,dz,xy_line)  
         
     # initialize arrays
-    xy_bins = ADCPy.util.find_regular_bin_edges_from_centers(xy_new_range)
-    z_bins = ADCPy.util.find_regular_bin_edges_from_centers(z_new)
+    xy_bins = adcpy.util.find_regular_bin_edges_from_centers(xy_new_range)
+    z_bins = adcpy.util.find_regular_bin_edges_from_centers(z_new)
     new_shape = [len(xy_new_range),len(z_new),3]
     avg.velocity = np.empty(new_shape)
     if stats:
@@ -76,15 +76,15 @@ def average_transects(transects,dxy,dz,plotline=None,return_ADCPy=True,stats=Tru
     for i in range(3):
         bin_ave_inputs = []
         for t in transects:
-            xx,yy,xy_range = ADCPy.util.find_projection_distances(t.xy,xy_line)
-            bin_ave_inputs.append(ADCPy.util.xy_z_linearize_array(xy_range,
+            xx,yy,xy_range = adcpy.util.find_projection_distances(t.xy,xy_line)
+            bin_ave_inputs.append(adcpy.util.xy_z_linearize_array(xy_range,
                                               t.bin_center_elevation,
                                               t.velocity[...,i]))
         xy = np.hstack([bin_ave_inputs[j][0] for j in range(n_transects)])
         z = np.hstack([bin_ave_inputs[j][1] for j in range(n_transects)])
         values = np.hstack([bin_ave_inputs[j][2] for j in range(n_transects)])
-        bin_ave = ADCPy.util.bin_average(xy,xy_bins,values,z,z_bins,return_stats=stats)
-        bin_ave = ADCPy.util.un_flip_bin_average(xy_new_range,z_new,bin_ave)
+        bin_ave = adcpy.util.bin_average(xy,xy_bins,values,z,z_bins,return_stats=stats)
+        bin_ave = adcpy.util.un_flip_bin_average(xy_new_range,z_new,bin_ave)
         if stats:
             (avg.velocity[...,i],
              avg.velocity_n[...,i],
@@ -99,7 +99,7 @@ def average_transects(transects,dxy,dz,plotline=None,return_ADCPy=True,stats=Tru
     avg.n_bins = new_shape[1]
 
     # report back
-    if return_ADCPy:
+    if return_adcpy:
         avg.xy_srs = transects[0].xy_srs
         sources = [transects[i].source for i in range(n_transects)]
         avg.source = "\n".join(sources)
@@ -122,7 +122,7 @@ def write_csv_velocity(adcp,csv_filename,no_header=False):
     of lon-lat positions, and bin_center_elveations.  The write order for a 2D
     velocity aray is the first (leftmost) axis is written horizontally.
     Inputs:
-        ADCP = ADCP_Data object
+        ADCP = ADCPData object
         csv_filename = file path of output file
         no_header = boolean, True = don'r write position data, False = write position data
     Returns:
@@ -169,17 +169,17 @@ def write_csv_velocity(adcp,csv_filename,no_header=False):
 def group_adcp_obs_by_spacetime(adcp_obs,max_gap_m=30.0,
                                 max_gap_minutes=20.0,max_group_size=6):
     """ 
-    Sorts ADCP_Data objects first into groups by closeness in terms of location, 
-    and then further sorts location groups by time.  Groups of ADCP_Data objects
+    Sorts ADCPData objects first into groups by closeness in terms of location, 
+    and then further sorts location groups by time.  Groups of ADCPData objects
     must first be within max_gap_m from each other, and then be within max_gap_minutes
     of each other.
     Inputs:
-        adcp_obs = list of ADCP_Transect_Data objects
+        adcp_obs = list of ADCPTransectData objects
         max_gap_m = maximum distance allowed between ADCP observations when grouping
         max_gap_minutes = maximum time allowed between ADCP observations when grouping
-        max_group_size = maximum number of ADCP_Data objects per group
+        max_group_size = maximum number of ADCPData objects per group
     Returns:
-        List of lists that contain groups of input ADCP_Data objects
+        List of lists that contain groups of input ADCPData objects
     """    
     space_groups = group_adcp_obs_within_space(adcp_obs,max_gap_m)
     for i in range(len(space_groups)):
@@ -197,17 +197,17 @@ def group_adcp_obs_by_spacetime(adcp_obs,max_gap_m=30.0,
 
 def group_adcp_obs_within_space(adcp_obs,max_gap_m=30.0):
     """ 
-    Sorts ADCP_Data objects  into groups by closeness in space, in an 
+    Sorts ADCPData objects  into groups by closeness in space, in an 
     ordered-walk/brute force manner.  Distances between all ADCO_Data observation
     centroids are found, and then starting with the first ADCO_data, the remaining
-    ADCP_Data objects are evaluated for distance to the first.  If within 'max_gap_m'
+    ADCPData objects are evaluated for distance to the first.  If within 'max_gap_m'
     they are grouped and marked as 'picked' so they will not assigned to a group
     more than once.
     Inputs:
-        adcp_obs = list of ADCP_Transect_Data objects
+        adcp_obs = list of ADCPTransectData objects
         max_gap_m = maximum distance allowed between ADCP observations when grouping
     Returns:
-        List of lists that contain groups of input ADCP_Data objects
+        List of lists that contain groups of input ADCPData objects
     """    
 
     n_obs = len(adcp_obs)
@@ -231,16 +231,16 @@ def group_adcp_obs_within_space(adcp_obs,max_gap_m=30.0):
 
 def group_adcp_obs_within_time(adcp_obs,max_gap_minutes=20.0,max_group_size=6):
     """ 
-    Sorts ADCP_Data objects into groups by closeness in time, with groups being
+    Sorts ADCPData objects into groups by closeness in time, with groups being
     separated by more than 'max_gap_minutes'.This method first sorts the group by
     start time, and then splits the observations where they are more than
     'max_gap_minutes' apart.
     Inputs:
-        adcp_obs = list of ADCP_Transect_Data objects
+        adcp_obs = list of ADCPTransectData objects
         max_gap_minutes = maximum Time allowed between ADCP observations when grouping
-        max_group_size = maximum number of ADCP_Data objects per group
+        max_group_size = maximum number of ADCPData objects per group
     Returns:
-        List of lists that contain groups of input ADCP_Data objects
+        List of lists that contain groups of input ADCPData objects
     """    
     if len(adcp_obs) == 1:
         return ([adcp_obs,], [None,])
@@ -266,7 +266,7 @@ def group_adcp_obs_within_time(adcp_obs,max_gap_minutes=20.0,max_group_size=6):
 
 def find_adcp_files_within_period(working_directory,max_gap=20.0,max_group_size=6):
     """ 
-    Sorts a directory of ADCP_Rdiworkhoure_Data raw files into groups by 
+    Sorts a directory of ADCPRdiWorkHorseData raw files into groups by 
     closeness in time, with groups being separated by more than 
     'max_gap_minutes'. This method first sorts the files by start time, and 
     then splits the observations where they are more than
@@ -274,9 +274,9 @@ def find_adcp_files_within_period(working_directory,max_gap=20.0,max_group_size=
     Inputs:
         working_directory = directory path containing ADCP raw or netcdf files
         max_gap = maximum time allowed between ADCP observations when grouping (minutes)
-        max_group_size = maximum number of ADCP_Data objects per group
+        max_group_size = maximum number of ADCPData objects per group
     Returns:
-        List of lists that contain groups of input ADCP_Data objects
+        List of lists that contain groups of input ADCPData objects
     """    
     if os.path.exists(working_directory):
         data_files = glob.glob(os.path.join(working_directory,'*[rR].000'))
@@ -288,8 +288,8 @@ def find_adcp_files_within_period(working_directory,max_gap=20.0,max_group_size=
     start_times = list()
     for data_file in data_files:
         try:
-            a = ADCPy.open_adcp(data_file,
-                            file_type="ADCP_RdiWorkhorse_Data",
+            a = adcpy.open_adcp(data_file,
+                            file_type="ADCPRdiWorkhorseData",
                             num_av=1)
             start_times.append(a.mtime[0])
         except:
@@ -376,7 +376,7 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
     data, and multiplies it by the velocities to calculate flows
     and mean velocities.
     Inputs:
-        adpc = ADCP_Data object. projected to an xy regualr grid projection
+        adpc = ADCPData object. projected to an xy regualr grid projection
         depths = optional 1D array of depths that correspond the ensemble 
           dimension of velocity in adcp
         use_grid_only = True: use each grid cell to calc flows/mean velocities
@@ -388,7 +388,7 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
         total_flow = total U,V, and W discharge [3] {m^3/s}
         total_survey_area = total area used for flow calculations {m^3}
     """    
-    # check to see if adcp is child of ADCP_Transect_Data ??
+    # check to see if adcp is child of ADCPTransectData ??
     if adcp.xy is None:
         ValueError("xy projection required")
         raise
@@ -400,7 +400,7 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
         rfv = True
     elif adcp.bt_depth is None:
         rfv = True
-    xd,yd,dd = ADCPy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
     dxy = abs(dd[0]-dd[1])
     dz = abs(adcp.bin_center_elevation[0]-adcp.bin_center_elevation[1])
     (depths, velocity_mask) = adcp.get_velocity_mask(range_from_velocities=rfv,nan_mask=True)
@@ -430,11 +430,11 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
 
 def find_centroid_distance_matrix(adcp_obs):
     """ 
-    Calculates all possible distances between a list of ADCP_data objects (twice...ineffcient)
+    Calculates all possible distances between a list of ADCPData objects (twice...ineffcient)
     Inputs:
-        adcp_obs = list ADCP_Data objects, shape [n]
+        adcp_obs = list ADCPData objects, shape [n]
     Returns:
-        centers = list of centorids of ensemble locations of input ADCP_Data objects, shape [n]
+        centers = list of centorids of ensemble locations of input ADCPData objects, shape [n]
         distances = xy distance between centers, shape [n-1]
     """    
     n_obs = len(adcp_obs)
@@ -442,29 +442,29 @@ def find_centroid_distance_matrix(adcp_obs):
     centers = []
     for a in adcp_obs:
         if a.xy is not None:
-            centers.append(ADCPy.util.centroid(a.xy))
+            centers.append(adcpy.util.centroid(a.xy))
         else:
             centers.append(np.array([np.nan,np.nan]))
-    centers = [ADCPy.util.centroid(a.xy) for a in adcp_obs]
+    centers = [adcpy.util.centroid(a.xy) for a in adcp_obs]
     for i in range(n_obs):
         for j in range(n_obs):
-            distances[i,j] = ADCPy.util.find_line_distance(centers[i],centers[j])
+            distances[i,j] = adcpy.util.find_line_distance(centers[i],centers[j])
     return (centers,distances)
 
 
 def transect_rotate(adcp_transect,rotation,xy_line=None):
     """ 
-    Calculates all possible distances between a list of ADCP_data objects (twice...ineffcient)
+    Calculates all possible distances between a list of ADCPData objects (twice...ineffcient)
     Inputs:
-        adcp_obs = list ADCP_Data objects, shape [n]
+        adcp_obs = list ADCPData objects, shape [n]
     Returns:
-        centers = list of centorids of ensemble locations of input ADCP_Data objects, shape [n]
+        centers = list of centorids of ensemble locations of input ADCPData objects, shape [n]
         distances = xy distance between centers, shape [n-1]
     """    
     """ 
-    Rotates ADCP_Transect_Data U and V velocities.
+    Rotates ADCPTransectData U and V velocities.
     Inputs:
-        adcp_transect = ADCP_Transect_Data object
+        adcp_transect = ADCPTransectData object
         rotation = one of:
           None - no rotation of averaged velocity profiles
          'normal' - rotation based upon the normal to the plotline (default rotation type)
@@ -473,24 +473,24 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
          'no transverse flow' - rotation by the net flow vector is used to minnumize V
         xy_line = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
     Returns
-        adcp_transect = ADCP_Transect_Data object with rotated UV velocities
+        adcp_transect = ADCPTransectData object with rotated UV velocities
     """
     if rotation == "normal":
         # find angle of line:
         if xy_line is None:
             if adcp_transect.xy is None:
-                raise Exception,"transect_rotate() error: adcp_data must be xy projected, or input xy_line must be supplied for normal rotation"
-            xy_line = ADCPy.util.map_xy_to_line(adcp_transect.xy)
-        theta = ADCPy.util.calc_normal_rotation(xy_line)
+                raise Exception,"transect_rotate() error: ADCPData must be xy projected, or input xy_line must be supplied for normal rotation"
+            xy_line = adcpy.util.map_xy_to_line(adcp_transect.xy)
+        theta = adcpy.util.calc_normal_rotation(xy_line)
     elif rotation == "no transverse flow":
         flows = adcp_transect.calc_ensemble_flow(range_from_velocities=True)
-        theta = ADCPy.util.calc_net_flow_rotation(flows[:,0],flows[:,1])
+        theta = adcpy.util.calc_net_flow_rotation(flows[:,0],flows[:,1])
     elif rotation == "Rozovski":
         flows = adcp_transect.calc_ensemble_flow(range_from_velocities=True)
-        theta = ADCPy.util.calc_Rozovski_rotation(flows[:,0],flows[:,1])
+        theta = adcpy.util.calc_Rozovski_rotation(flows[:,0],flows[:,1])
     elif rotation == "principal flow":
         flows = adcp_transect.calc_ensemble_flow(range_from_velocities=True)
-        theta = ADCPy.util.principal_axis(flows[:,0],flows[:,1],calc_type='EOF')
+        theta = adcpy.util.principal_axis(flows[:,0],flows[:,1],calc_type='EOF')
     elif type(rotation) is str:
         raise Exception,"In transect_rotate(): input 'rotation' string not understood: %s"%rotation
     else:
@@ -506,7 +506,7 @@ def find_UV_dispersion(adcp):
     Calculates dispersion coeffcients of velocties in adcp according to 
     Fischer et al. 1979
     Inputs:
-        adcp = ADCP_Transect_data object
+        adcp = ADCPTransectData object
     Returns:
         ustbar = 
         Kx_3i = horizontal dispersion coefficients
@@ -521,8 +521,8 @@ def find_UV_dispersion(adcp):
     else:
         (depth, velocity_mask) = adcp.get_velocity_mask(range_from_velocities=True,
                                                         nan_mask=True)
-    xd,yd,dd = ADCPy.util.find_projection_distances(adcp.xy)
-    return  ADCPy.util.calcKxKy(adcp.velocity[:,:,0],
+    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
+    return  adcpy.util.calcKxKy(adcp.velocity[:,:,0],
                                 adcp.velocity[:,:,1],
                                 dd,
                                 adcp.bin_center_elevation,

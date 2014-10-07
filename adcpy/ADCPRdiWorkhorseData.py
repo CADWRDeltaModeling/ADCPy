@@ -2,7 +2,7 @@
 """
 ADCPy
 
-A sub-class or ADCP_Transect_Data from ADCPy.py.  Reads RDI raw files from
+A sub-class or ADCPTransectData from adcpy.py.  Reads RDI raw files from
 the RDI Workhorse ADCP
 
 This code is open source, and defined by the included MIT Copyright License 
@@ -18,13 +18,13 @@ import rdradcp
 reload(rdradcp)
 import pynmea.streamer
 import cStringIO
-import ADCPy_utilities as au
+import adcpy_utilities as au
 #import scipy.stats.stats as sp
 import scipy.stats.morestats as ssm
-import ADCPy
+import adcpy
 
 
-class ADCP_RdiWorkhorse_Data(ADCPy.ADCP_Transect_Data):
+class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
     """
     Subclass of :py:class:AdcpData for reading raw .rNNN RDI ADCP data files,
     and optionally accompanying navigational data in .nNNN files.
@@ -309,7 +309,7 @@ class ADCP_RdiWorkhorse_Data(ADCPy.ADCP_Transect_Data):
         return True
 
     def write_nc_extra(self,grp,zlib=None):
-        super(ADCP_RdiWorkhorse_Data,self).write_nc_extra(grp,zlib)
+        super(ADCPRdiWorkhorseData,self).write_nc_extra(grp,zlib)
 
         if self.error_vel is not None:
             (e_ens,e_bins) = np.shape(self.error_vel)
@@ -360,9 +360,9 @@ class ADCP_RdiWorkhorse_Data(ADCPy.ADCP_Transect_Data):
             
 
     def read_nc_extra(self,grp):           
-        super(ADCP_RdiWorkhorse_Data,self).read_nc_extra(grp)
+        super(ADCPRdiWorkhorseData,self).read_nc_extra(grp)
 
-        print 'Doing read_nc in ADCP_RdiWorkhorse_Data...'
+        print 'Doing read_nc in ADCPRdiWorkhorseData...'
 
         # read optional base variables
         if 'error_vel' in grp.variables:
@@ -390,7 +390,7 @@ class ADCP_RdiWorkhorse_Data(ADCPy.ADCP_Transect_Data):
     def average_ensembles(self,ens_to_avg):
         """ Extra variables must be averaged for this subclass
         """
-        a = super(ADCP_RdiWorkhorse_Data,self).average_ensembles(ens_to_avg)
+        a = super(ADCPRdiWorkhorseData,self).average_ensembles(ens_to_avg)
         n2 = a.n_ensembles
         nn = range(n2*ens_to_avg)
         if a.heading is not None:

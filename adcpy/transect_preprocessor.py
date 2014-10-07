@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """
-DWR_transect_preprocess
+transect_preprocess
 
 Driver script that is designed find and load raw ADCP observations from a
 designated directory, and perform certain processing task on them, optionally
-saving the reuslts to ADCP_Data netcdf format, and/or passing a list of
-ADCP_Data python objects to a parent script.
+saving the reuslts to ADCPData netcdf format, and/or passing a list of
+ADCPData python objects to a parent script.
 
 This script requires an options file.  If no path to a valid options file is
-passed as an argument to DWR_transect_preprocessor(), it look for the default
-file 'DWR_transect_preprocessor_input.py' in the local run directory.
+passed as an argument to transect_preprocessor(), it look for the default
+file 'transect_preprocessor_input.py' in the local run directory.
 
 This code is open source, and defined by the included MIT Copyright License 
 
@@ -22,15 +22,12 @@ import numpy as np
 #import scipy.stats.stats as sp
 import scipy.stats.morestats as ssm
 
-import DWR_processor_input
-reload(DWR_processor_input)
-from DWR_processor_input import *
+import transect_preprocessor_input
+reload(transect_preprocessor_input)
+from transect_preprocessor_input import *
 import shutil
-import ADCPy
-#import ADCP_RdiWorkhorse_data
-reload(ADCPy)
-#import adcp_results
-#reload(adcp_results)
+import adcpy
+reload(adcpy)
 from matplotlib.dates import num2date#,date2num,
 
 # Common formatting for datenums:
@@ -39,15 +36,15 @@ def fmt_dnum(dn):
 
 
 
-default_option_file = r"DWR_transect_preprocessor_input.py"
+default_option_file = r"transect_preprocessor_input.py"
 
-def DWR_transect_preprocessor(option_file=None):
+def transect_preprocessor(option_file=None):
     """
-    The method finds, loads, pre-preprocess, and returns ADCP_Data ojects
-    for ADCP_Rdiwirkhourse_Data compatible raw/netcdf files.  It returns
-    a list of ADCP_Data objects.
+    The method finds, loads, pre-preprocess, and returns ADCPData ojects
+    for ADCPRdiWorkhorseData compatible raw/netcdf files.  It returns
+    a list of ADCPData objects.
     
-    See the default options file 'DWR_transect_preprocessor_input.py' for the 
+    See the default options file 'transect_preprocessor_input.py' for the 
     input options.
     """
     np.seterr(all='ignore')
@@ -112,7 +109,7 @@ def DWR_transect_preprocessor(option_file=None):
             
 #            try:
             a = ADCPy.open_adcp(data_file,
-                            file_type="ADCP_RdiWorkhorse_Data",
+                            file_type="ADCPRdiWorkhorseData",
                             num_av=1,
                             adcp_depth=adcp_depth)
             m1,h1,bt1,xy1 = a.copy_headCorrect_vars(xy_srs=xy_projection)
@@ -177,8 +174,8 @@ def DWR_transect_preprocessor(option_file=None):
     adcp_preprocessed = []
     for data_file in data_files:    
  #       try:
-        a = ADCPy.open_adcp(data_file,
-                            file_type='ADCP_RdiWorkhorse_Data',
+        a = adcpy.open_adcp(data_file,
+                            file_type='ADCPRdiWorkhorseData',
                             num_av=1,
                             adcp_depth=adcp_depth)
         path, fname = os.path.split(data_file)
@@ -239,5 +236,5 @@ def DWR_transect_preprocessor(option_file=None):
 
 # run myself
 if __name__ == "__main__":
-    DWR_transect_preprocessor()
+    transect_preprocessor()
 

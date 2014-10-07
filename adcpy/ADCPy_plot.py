@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-ADCPy_plot 
+adcpy_plot 
 
-Tools for visualizing ADCP data that is read and processed by the ADCPy module
-This module is imported under the main ADCPy, and should be available as 
-ADCPy.plot. Some methods can be used to visualize flat arrays, independent of
-ADCPy, and the plots may be created quickly using the i_panel and q_panel 
+Tools for visualizing ADCP data that is read and processed by the adcpy module
+This module is imported under the main adcpy, and should be available as 
+adcpy.plot. Some methods can be used to visualize flat arrays, independent of
+adcpy, and the plots may be created quickly using the i_panel and q_panel 
 classes.
 
 This code is open source, and defined by the included MIT Copyright License 
@@ -20,8 +20,8 @@ import matplotlib.pyplot as plt
 import scipy.stats.stats as sp
 from matplotlib.dates import num2date#,date2num,
 
-import ADCPy
-from ADCPy_recipes import calc_transect_flows_from_uniform_velocity_grid
+import adcpy
+from adcpy_recipes import calc_transect_flows_from_uniform_velocity_grid
 
 U_str = 'U'
 V_str = 'V'
@@ -411,7 +411,7 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
     Generates a with a single panel, plotting U velocity as an i_panel, overlain by
     VW vectors from a q_panel.
     Inputs:
-        adcp = ADCP_Data object
+        adcp = ADCPData object
         u_vecs,v_vecs = desired number of horizontal/vertical vectors [integers]
         fig = input figure number [integer or None]
         title = figure title text [string or None]
@@ -422,7 +422,7 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
         fig = plt.figure(fig,figsize=(10,4))
     else:
         plt.clf()
-    xd,yd,dd = ADCPy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
     stream_wise = get_basic_velocity_panel(adcp.velocity[:,:,1],res=0.01)
     stream_wise.x = dd
     stream_wise.y = adcp.bin_center_elevation
@@ -446,7 +446,7 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
     """
     Generates a q_panel, plotting mean UV velocity vectors in the x-y plane.
     Inputs:
-        adcp = ADCP_Data object
+        adcp = ADCPData object
         fig = input figure number [integer or None]
         title = figure title text [string or None]
         n_vectors = desired number of vectors [integer]
@@ -455,7 +455,7 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
         fig = matplotlib figure object, or
         vectors = q_panel object
     """        
-    xd,yd,dd = ADCPy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
     dude = np.zeros((adcp.n_ensembles,2),np.float64)
     velocity = adcp.get_unrotated_velocity()
     # this doesn't factor in depth, may integrate bad values if the have not been filtered into NaNs somehow
@@ -484,10 +484,10 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
 def plot_obs_group_xy_lines(adcp_obs,fig=None,title=None):
     """
     Produces a quick plot of the adcp ensemble x-y locations, from
-    a list of ADCP_Data objects.  x-y tracks lines are colored differently
-    for each ADCP_Data object.
+    a list of ADCPData objects.  x-y tracks lines are colored differently
+    for each ADCPData object.
     Inputs:
-        adcp_obs = list ADCP_Data objects
+        adcp_obs = list ADCPData objects
         fig = input figure number [integer or None]
         title = figure title text [string or None]
     Returns:
@@ -510,10 +510,10 @@ def plot_obs_group_xy_lines(adcp_obs,fig=None,title=None):
 
 def plot_xy_line(adcp,fig=None,title=None,use_stars_at_xy_locations=True):
     """
-    Produces a quick plot of the adcp ensemble x-y locations, from an ADCP_Data
+    Produces a quick plot of the adcp ensemble x-y locations, from an ADCPData
     object.
     Inputs:
-        adcp_obs = list ADCP_Data objects
+        adcp_obs = list ADCPData objects
         fig = input figure number [integer or None]
         title = figure title text [string or None]
         use_stars_at_xy_locations = plots * at actual ensemble locations [True/False]
@@ -528,7 +528,7 @@ def plot_xy_line(adcp,fig=None,title=None,use_stars_at_xy_locations=True):
         x = adcp.lonlat[:,0]
         y = adcp.lonlat[:,1]
     else:
-        raise Exception,"plot_xy_line(): no position data in adcp_data object"
+        raise Exception,"plot_xy_line(): no position data in ADCPData object"
     if use_stars_at_xy_locations:
         plt.plot(x,y,marker='*')
     else: 
@@ -541,10 +541,10 @@ def plot_xy_line(adcp,fig=None,title=None,use_stars_at_xy_locations=True):
 def plot_UVW_velocity(adcp,UVW='UVW',fig=None,title=None,ures=None,vres=None,wres=None,
                             equal_res_about_zero=True,return_panels=False):
     """
-    Produces a quick plot of the adcp ensemble x-y locations, from an ADCP_Data
+    Produces a quick plot of the adcp ensemble x-y locations, from an ADCPData
     object.
     Inputs:
-        adcp_obs = list ADCP_Data objects
+        adcp_obs = list ADCPData objects
         fig = input figure number [integer or None]
         title = figure title text [string or None]
         use_stars_at_xy_locations = plots * at actual ensemble locations [True/False]
@@ -557,11 +557,11 @@ def plot_UVW_velocity(adcp,UVW='UVW',fig=None,title=None,ures=None,vres=None,wre
     res = [ures, vres, wres]
     if adcp.xy is not None:
         if np.size(adcp.xy[:,0]) == adcp.n_ensembles:
-            xd,yd,dx = ADCPy.util.find_projection_distances(adcp.xy)
+            xd,yd,dx = adcpy.util.find_projection_distances(adcp.xy)
     if adcp.mtime is not None:
         if np.size(adcp.mtime) == adcp.n_ensembles:
             dt = adcp.mtime
-    ax = ADCPy.util.get_axis_num_from_str(UVW)
+    ax = adcpy.util.get_axis_num_from_str(UVW)
     
     for i in ax:
         if i == ax[0] and title is not None:
@@ -599,7 +599,7 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     Plots projected mean flow vectors, U and V velocity profiles, and 
     associated text data on a single plot.
     Inputs:
-        adcp_obs = list ADCP_Data objects
+        adcp_obs = list ADCPData objects
         fig = input figure number [integer or None]
         title = figure title text [string or None]
         ures,vres = numbers by which the velocity bounds will be rounded up toward [number or None]
@@ -627,7 +627,7 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     u_panel.xlabel = None
     v_panel.chop_off_nans = True
 
-    xd,yd,dd = ADCPy.util.find_projection_distances(adcp.xy)           
+    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)           
 
     plt.subplot(221)
     vectors.plot()

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-DWR_transect_average
+transect_average
 
 Driver script that is designed to average repeated ADCP transect observations
 in an effort of reduce measurement error and better resolve non-steamwise and 
@@ -37,7 +37,7 @@ avg_rotation                   = 'Rozovski'   # One of ['Rozovski','no transvers
 avg_std_drop                   = 3.0          # Standard deviation of velocity, above which samples are dropped from analysis {0.0=no dropping, 2.0-3.0 typically [number of standard deviations]}
 avg_std_interp                 = True         # Perform interpolation of holes in velocity profiles left by high standard deviation removal {typically True with std_drop > 0.0}
 avg_smooth_kernel              = 5            # Smooth velocity data using a square kernel box-filter, with side dimension = avg_smooth_kernel.  0 = no kernel smoothing
-avg_save_netcdf                = True         # Save bin-averaged velocities as an ADCP_Data netcdf file
+avg_save_netcdf                = True         # Save bin-averaged velocities as an ADCPData netcdf file
 avg_save_csv                   = True         # Save bin-averaged velocities as a CSV text file
 avg_plot_xy                    = True         # Generate a composite plot of survey location(s) of original ADCP ensembles
 avg_plot_avg_n_sd              = True         # Generate image plots of bin-averaged U,V,W velocities, and the number and standard deviation of bin averages
@@ -55,24 +55,24 @@ import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-import DWR_transect_preprocessor
-reload(DWR_transect_preprocessor)
-import ADCPy
-reload(ADCPy)
-from ADCPy_recipes import *
+import transect_preprocessor
+reload(transect_preprocessor)
+import adcpy
+reload(adcpy)
+from adcpy_recipes import *
 
-def DWR_transect_average(pre_process_input_file=None):
+def transect_average(pre_process_input_file=None):
     """
-    Received a list of ADCP_Transect_Data objects from DWR_transect_preprocessor.py,
-    and then groups and bin-averages the transects.  Group average ADCP_Data 
+    Received a list of ADCPTransectData objects from transect_preprocessor.py,
+    and then groups and bin-averages the transects.  Group average ADCPData 
     objects, velocties, and plots are optionally output to the outpath supplied
-    by DWR_transect_preprocessor().
+    by transect_preprocessor().
     Inputs:
-        pre_process_input_file = path to a DWR_transect_preprocessor input file,
+        pre_process_input_file = path to a transect_preprocessor input file,
           or None to use the default file.
     """
 
-    (transects,outpath) = DWR_transect_preprocessor.DWR_transect_preprocessor(pre_process_input_file)
+    (transects,outpath) = transect_preprocessor.transect_preprocessor(pre_process_input_file)
     print 'total transects loaded:',len(transects)    
     grps_to_average = group_adcp_obs_by_spacetime(transects,
                                                   max_gap_m=avg_max_gap_m,
@@ -85,11 +85,11 @@ def DWR_transect_average(pre_process_input_file=None):
     grp_num = 0
     for grp in grps_to_average:
         if avg_plot_xy:
-            fig1 = ADCPy.plot.plot_obs_group_xy_lines(grp,title='Group%03i Source Observations'%grp_num)
+            fig1 = adcpy.plot.plot_obs_group_xy_lines(grp,title='Group%03i Source Observations'%grp_num)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_xy_lines.png"%grp_num))
 
-        avg = average_transects(grp,dxy=avg_dxy,dz=avg_dz,return_ADCPy=True)
+        avg = average_transects(grp,dxy=avg_dxy,dz=avg_dz,return_adcpy=True)
         if avg_rotation is not None:
             avg = transect_rotate(avg,avg_rotation)
         if avg_std_drop > 0:
@@ -116,25 +116,25 @@ def DWR_transect_average(pre_process_input_file=None):
                     plt.savefig(os.path.join(outpath,"group%03i_%s_avg_n_sd.png"%(grp_num,uvw[i])))
         
         if avg_plot_mean_vectors:
-            fig3 = ADCPy.plot.plot_ensemble_mean_vectors(avg,title='Group%03i Mean Velocity [m/s]'%grp_num)
+            fig3 = adcpy.plot.plot_ensemble_mean_vectors(avg,title='Group%03i Mean Velocity [m/s]'%grp_num)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_mean_velocity.png"%grp_num))
 
         if avg_plot_secondary_circulation:
-            fig4 = ADCPy.plot.plot_secondary_circulation(avg,u_vecs=30,v_vecs=30,
+            fig4 = adcpy.plot.plot_secondary_circulation(avg,u_vecs=30,v_vecs=30,
                                                          title='Group%03i Streamwise Velocity [m/s] and Cross-stream Vectors'%grp_num)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_secondary_circulation.png"%grp_num))
 
         if avg_plot_UVW_velocity_array:
-            fig5 = ADCPy.plot.plot_UVW_velocity_array(avg.velocity,
+            fig5 = adcpy.plot.plot_UVW_velocity_array(avg.velocity,
                                                       title='Group%03i Velocity [m/s]'%grp_num,
                                                       ures=0.1,vres=0.1,wres=0.05)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_UVW_velocity.png"%grp_num))
 
         if avg_plot_flow_summmary:
-            fig6 = ADCPy.plot.plot_flow_summmary(avg,title='Group%03i Streawise Summary'%grp_num,
+            fig6 = adcpy.plot.plot_flow_summmary(avg,title='Group%03i Streawise Summary'%grp_num,
                                                  ures=0.1,vres=0.1,use_grid_flows=True)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_Flow_Summary.png"%grp_num))
@@ -152,10 +152,10 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
     Generates a vertical three-panel plot, showing images of a bin-averaged
     velocity, the number of velociy measurements in each bin, and the bin standard
     deviation velocity.  Desinged to be used in conjuction with 
-    DWR_transect_average() output.
+    transect_average() output.
     Inputs:
-        avg = ADCP_Data object, with extra velocity_n and velocity_sd data 
-          fields produced by DWR_transect_average()
+        avg = ADCPData object, with extra velocity_n and velocity_sd data 
+          fields produced by transect_average()
         uvw = python string, either 'U','V', or 'W' to select which velocity
           compontent to plot.
         resolution = optional value to round the plot velocity scales up toward
@@ -169,12 +169,12 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
         v_str = 'W'
     
     inv = 1/resolution
-    xx,yy,dd = ADCPy.util.find_projection_distances(avg.xy)
+    xx,yy,dd = adcpy.util.find_projection_distances(avg.xy)
     mtest = np.floor(avg.velocity[...,uvw]*inv)
     minv = np.nanmin(np.nanmin(mtest))*resolution
     mtest = np.ceil(avg.velocity[...,uvw]*inv)    
     maxv = np.nanmax(np.nanmax(mtest))*resolution
-    avg_panel = ADCPy.plot.i_panel(velocity = avg.velocity[:,:,uvw],
+    avg_panel = adcpy.plot.i_panel(velocity = avg.velocity[:,:,uvw],
                              x = dd,
                              y = avg.bin_center_elevation,
                              minv = minv,
@@ -185,7 +185,7 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
                              use_pcolormesh = True,
                              title='%s Averaged Velocity [m/s]'%v_str)
     maxv = np.nanmax(np.nanmax(avg.velocity_n[...,uvw]))
-    n_panel = ADCPy.plot.i_panel(velocity = avg.velocity_n[:,:,uvw],
+    n_panel = adcpy.plot.i_panel(velocity = avg.velocity_n[:,:,uvw],
                              x = dd,
                              y = avg.bin_center_elevation,
                              minv = 0,
@@ -199,7 +199,7 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
     minv = np.nanmin(np.nanmin(mtest))*resolution
     mtest = np.ceil(avg.velocity_sd[...,uvw]*inv)    
     maxv = np.nanmax(np.nanmax(mtest))*resolution
-    sd_panel = ADCPy.plot.i_panel(velocity = avg.velocity_sd[:,:,uvw],
+    sd_panel = adcpy.plot.i_panel(velocity = avg.velocity_sd[:,:,uvw],
                              x = dd,
                              y = avg.bin_center_elevation,
                              minv = 0,
@@ -209,13 +209,13 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
                              units = 'm/s',
                              use_pcolormesh = True,
                              title='Standard Deviation [m/s]')
-    fig = ADCPy.plot.plot_vertical_panels((avg_panel,n_panel,sd_panel))
+    fig = adcpy.plot.plot_vertical_panels((avg_panel,n_panel,sd_panel))
     return fig
 
     
 
 # run myself
 if __name__ == "__main__":
-    DWR_transect_average(r'DWR_trn_pre_input_GEO20090106.py')
-    #DWR_transect_average()
+    transect_average(r'trn_pre_input_GEO20090106.py')
+    #transect_average()
 

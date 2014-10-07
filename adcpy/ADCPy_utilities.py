@@ -1,11 +1,11 @@
 """
-ADCPy_utilities
+adcpy_utilities
 
-Tools and calculations used by the ADCPy module.  This module is independent of 
-ADCPy, but is imported by it and is available as ADCPy.util.  This tools are 
+Tools and calculations used by the adcpy module.  This module is independent of 
+adcpy, but is imported by it and is available as adcpy.util.  This tools are 
 designed to by leveraged for different tasks, the creation of new processing
 recipies and automated scripting.  They allows potentially complicated
-data processing using the ADCPy module to remain readable, hopefully.
+data processing using the adcpy module to remain readable, hopefully.
 
 This code is open source, and defined by the included MIT Copyright License 
 
@@ -379,7 +379,7 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 
 def get_axis_num_from_str(axes_string):
     """
-    U,V,W correspond to 0,1,2 in the trailing axis of ADCPy velocity arrays.
+    U,V,W correspond to 0,1,2 in the trailing axis of adcpy velocity arrays.
     This method returns a list of 0,1, and 2s corresponding to an input 
     string composed U,V, and Ws.
     Inputs:

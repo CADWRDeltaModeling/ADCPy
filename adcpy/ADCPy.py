@@ -22,19 +22,19 @@ import os
 import numpy as np
 import scipy.stats.stats as sp
 #import scipy.stats.morestats as ssm
-import ADCPy_utilities as util
-import ADCPy_plot as plot
+import adcpy_utilities as util
+import adcpy_plot as plot
 import netCDF4
 
 """ 
 Make sure subclasses of ADPCData are recorded here, so they may be
 loaded dynamically.
 """
-adcpdata_subclass_names = [ 'ADCP_RdiWorkhorse_Data',  # RDI Workhorse / WinRiver II Raw File, subclass of ADCPTransectData
-                            'ADCP_RdiRiverRay_Data',   # RDI River Ray / WinRiver II Raw File, subclass of ADCPTransectData
-                            'ADCP_RdiChannelMaster_Data' ]  # RDI Channel Master Raw File, subclass of ADCPMooredData
-                            #'ADCP_Transect_Data',      # General sub-class of ADCPData with transect-specific functionality
-                            #'ADCP_Moored_Data',        # General sub-class of ADCPData with moored-specific functionality
+adcpdata_subclass_names = [ 'ADCPRdiWorkhorseData',  # RDI Workhorse / WinRiver II Raw File, subclass of ADCPTransectData
+                            'ADCPRdiRiverRayData',   # RDI River Ray / WinRiver II Raw File, subclass of ADCPTransectData
+                            'ADCPRdiChannelMasterData' ]  # RDI Channel Master Raw File, subclass of ADCPMooredData
+                            #'ADCPTransectData',      # General sub-class of ADCPData with transect-specific functionality
+                            #'ADCPMooredData',        # General sub-class of ADCPData with moored-specific functionality
 
 def open_adcp(file_path,file_type=None,**kwargs):
     """ 
@@ -48,7 +48,7 @@ def open_adcp(file_path,file_type=None,**kwargs):
         file_type = either 'raw_file' or 'nc_file' [str], optional to help in deciding how to open file
         ** additional keyword=argument pairs that will be passed to the appropriate open call
     Returns:
-        ADCP_Data class object (or sub-class)
+        ADCPData class object (or sub-class)
     """
     file_name,ext = os.path.splitext(file_path)
     
@@ -88,7 +88,7 @@ def open_adcp(file_path,file_type=None,**kwargs):
         print  "Init of ADCPData file_type '" + file_type +"' failed"
         raise             
 
-class ADCP_Data(object):
+class ADCPData(object):
     """ 
     Encapsulates data from a single deployment of an ADCP
     Note that this class is intended to be general across multiple
@@ -143,13 +143,13 @@ class ADCP_Data(object):
 
     def copy_base_data(self):
         """ 
-        Copies base ADCP data to a new ADCP_data calss - used to populate
-        a new ADCP_Data class for the purposes of saving processed data
+        Copies base ADCP data to a new ADCPData calss - used to populate
+        a new ADCPData class for the purposes of saving processed data
         or stripping out subclass information.
         Returns:
-            adata = new ADCP_Data class object
+            adata = new ADCPData class object
         """
-        adata = ADCP_Data()
+        adata = ADCPData()
         for var in self.base_data_names:
             exec("adata.%s = self.%s"%(var,var))
         self.history_append('copy_base_data/strip to base variables')
@@ -160,13 +160,13 @@ class ADCP_Data(object):
         """ 
         Copies the minimum amount of data required to constitute ADCPy data.
         Returns:
-            adata = new ADCP_Data class object        
+            adata = new ADCPData class object        
         """
         min_data_names = ('n_ensembles',
                           'n_bins',
                           'velocity',
                           'bin_center_elevation')
-        adata = ADCP_Data()
+        adata = ADCPData()
         for var in min_data_names:
             exec("adata.%s = self.%s"%(var,var))
         return adata
@@ -194,7 +194,7 @@ class ADCP_Data(object):
 
     def history_append(self,string):
         """ 
-        Appends a string to the ADCP_Data class history
+        Appends a string to the ADCPData class history
         Inputs:
             string = python str to append
         """    
@@ -328,7 +328,7 @@ class ADCP_Data(object):
     def write_nc_extra(self,rootgrp,zlib):
         """ 
         Entry point for subclasses to add attributes and variables to the base
-        ADCP_Data data.
+        ADCPData data.
         Inputs:
             rootgrp = Python NetCDF object
             zlib = if True, use variable compression
@@ -337,7 +337,7 @@ class ADCP_Data(object):
 
     def read_nc(self,nc_file):
         """ 
-        Read base/minimum ADCP_Data variables from a NetCDF format data file.        
+        Read base/minimum ADCPData variables from a NetCDF format data file.        
         Inputs:
             nc_file = string with input netcdf filename and path
         """
@@ -383,14 +383,14 @@ class ADCP_Data(object):
             self.xy[:,0] = rootgrp.variables['ens_x'][...]
             self.xy_srs = rootgrp.variables['xy_projection'].epsg_code
 
-            print 'Doing read_nc in ADCP_Data...'
+            print 'Doing read_nc in ADCPData...'
 
 
         self.read_nc_extra(rootgrp)
         
     #except:
         
-        #print 'NETCDF read of ADCP_Data failed for file: ',nc_file
+        #print 'NETCDF read of ADCPData failed for file: ',nc_file
 
     #finally:
         # Failing to close the file can cause it to fail on
@@ -496,9 +496,9 @@ class ADCP_Data(object):
 
     def self_copy(self):
         """
-        Create an exact copy of an ADCP_Data class (or sub-class).
+        Create an exact copy of an ADCPData class (or sub-class).
         Returns:
-            new ADCP_Data class object  
+            new ADCPData class object  
         """
         import copy as cp
         return cp.deepcopy(self)
@@ -855,7 +855,7 @@ class ADCP_Data(object):
     def split_by_ensemble(self,split_nums):
         """
         Given a list of ensemble indices, splits self into len(split_nums)+1
-        ADCP_Data objects.
+        ADCPData objects.
         Inputs:
             split_nums = Python list of ensemble numbers (indices)
         """
@@ -886,9 +886,9 @@ class ADCP_Data(object):
         return sub_adcps
 
 
-class ADCP_Transect_Data(ADCP_Data):
+class ADCPTransectData(ADCPData):
     """ 
-    Subclass of :py:class:ADCP_Data for transect-based ADCP surveys, 
+    Subclass of :py:class:ADCPData for transect-based ADCP surveys, 
     for when the ADCP intrument is moving.
     """
 
@@ -904,7 +904,7 @@ class ADCP_Transect_Data(ADCP_Data):
             grp = Python NetCDF object
             zlib = if True, use variable compression
         """ 
-        super(ADCP_Transect_Data,self).write_nc_extra(grp,zlib)
+        super(ADCPTransectData,self).write_nc_extra(grp,zlib)
         if self.adcp_depth is not None:
             adcp_depth_var = grp.createVariable('adcp_depth','f8',
                                                    (self.nc_ensemble_dim),
@@ -932,7 +932,7 @@ class ADCP_Transect_Data(ADCP_Data):
         Inputs:
             grp = Python NetCDF object
         """ 
-        super(ADCP_Transect_Data,self).read_nc_extra(grp)
+        super(ADCPTransectData,self).read_nc_extra(grp)
         if 'adcp_depth' in grp.variables:
             self.adcp_depth = np.array(grp.variables['adcp_depth'][...])
         if 'bt_velocity' in grp.variables:
@@ -1020,7 +1020,7 @@ class ADCP_Transect_Data(ADCP_Data):
               direction
         """
         old_rotation = self.rotation_angle
-        super(ADCP_Transect_Data,self).set_totation(radian)
+        super(ADCPTransectData,self).set_totation(radian)
         if axes_string != 'UV':
             print "WARNING: bottom track velocity rotation not supported for axes: ",axes_string
         elif self.bt_velocity is not None:
@@ -1050,7 +1050,7 @@ class ADCP_Transect_Data(ADCP_Data):
         my_elev_line = np.copy(elev_line)
         if self.bt_depth is not None and elev_line is not None:
             my_elev_line = self.bt_depth
-        return super(ADCP_Transect_Data,self).get_velocity_mask(my_elev_line,range_from_velocities)
+        return super(ADCPTransectData,self).get_velocity_mask(my_elev_line,range_from_velocities)
 
 
     def calc_crossproduct_flow(self):
@@ -1099,7 +1099,7 @@ class ADCP_Transect_Data(ADCP_Data):
         # call base method to start regridding of base data, and get 
         # new grid info    
         (xy, xy_new, z, z_new, nn, pre_calcs) = \
-        super(ADCP_Transect_Data,self).xy_regrid(dxy,dz,xy_srs,pline,sort,kind)
+        super(ADCPTransectData,self).xy_regrid(dxy,dz,xy_srs,pline,sort,kind)
     
         # pre-sort data if needed, for speed
         if sort:
@@ -1140,19 +1140,19 @@ class ADCP_Transect_Data(ADCP_Data):
                                            pre_calcs=pre_calcs,kind=kind)
                            
  
-class ADCP_Moored_Data(ADCP_Data):
+class ADCPMooredData(ADCPData):
     """ 
-    Subclass of :py:class:ADCP_Data for moored ADCP surveys.
+    Subclass of :py:class:ADCPData for moored ADCP surveys.
     """
    
     adcp_depth = None # [n_bins] - depth of transducer under water 
  
     def __init__(self,file_path,**kwargs):
-        super(ADCP_Moored_Data,self).__init__(file_path=file_path,**kwargs)
+        super(ADCPMooredData,self).__init__(file_path=file_path,**kwargs)
 
     def write_nc_extra(self,grp,zlib=None):
-        super(ADCP_Moored_Data,self).write_nc_extra(grp)       
+        super(ADCPMooredData,self).write_nc_extra(grp)       
 
     def read_nc_extra(self,grp):           
-        super(ADCP_Moored_Data,self).read_nc_extra(grp)
+        super(ADCPMooredData,self).read_nc_extra(grp)
 
