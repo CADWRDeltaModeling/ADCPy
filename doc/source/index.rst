@@ -35,8 +35,8 @@ An abbreviated list of ADCPy functions:
 
 The California Department of Water Resources (DWR) commissioned the development of a tool to provide methods for ADCP transect analysis that are more customizable to different tasks and processing parameters than currently-available closed-source solutions.  These Python-based tools are designed to facilitate quality control and projection/extrapolation of ADCP surveys, conversion of ADCP transects to streamwise coordinates, re-gridding of ADCP transect profiles from vessel tracks onto a uniform grid, estimation and output of streamwise flows and velocities (NetCDF-CF format, see http://cfconventions.org/), and calculation of lateral and longitudinal dispersion coefficients (Fischer et al., 1979). 
 
-Contents
-========
+Using ADCPy
+===========
 
 .. toctree::
    :maxdepth: 2
@@ -44,7 +44,7 @@ Contents
    installation
    scripting
    terms
-   api/modules Package Documentation
+   api/modules
    
 Key modules
 ===========
