@@ -41,14 +41,6 @@ adcpy Package
     :undoc-members:
     :show-inheritance:
 
-:mod:`process_workhorse` Module
--------------------------------
-
-.. automodule:: adcpy.process_workhorse
-    :members:
-    :undoc-members:
-    :show-inheritance:
-
 :mod:`rdradcp` Module
 ---------------------
 
