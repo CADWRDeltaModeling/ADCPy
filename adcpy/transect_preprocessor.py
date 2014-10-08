@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-transect_preprocess
+"""Example preprocessor ADCP files for ADCPRdiWorkhorseData compatible raw/netcdf files
 
 Driver script that is designed find and load raw ADCP observations from a
 designated directory, and perform certain processing task on them, optionally

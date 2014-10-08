@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-adcpy_recipes
-
+"""Batch processing and logic for organizing and binning multiple ADCPData objects.
 Tools and methods for cateogizing/manipulating/visualizing data in ADCPy/ADCPData
 format.  This module is dependent upon adcpy. 
 

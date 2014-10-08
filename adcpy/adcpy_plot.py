@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-adcpy_plot 
-
-Tools for visualizing ADCP data that is read and processed by the adcpy module
+"""Tools for visualizing ADCP data that is read and processed by the adcpy module
 This module is imported under the main adcpy, and should be available as 
 adcpy.plot. Some methods can be used to visualize flat arrays, independent of
 adcpy, and the plots may be created quickly using the IPanel and QPanel 

@@ -137,7 +137,7 @@ def transect_average(pre_process_input_file=None):
             fig6 = adcpy.plot.plot_flow_summmary(avg,title='Group%03i Streawise Summary'%grp_num,
                                                  ures=0.1,vres=0.1,use_grid_flows=True)
             if avg_save_plots:
-                plt.savefig(os.path.join(outpath,"group%03i_Flow_Summary.png"%grp_num))
+                plt.savefig(os.path.join(outpath,"group%03i_flow_summary.png"%grp_num))
 
         if avg_show_plots:
             plt.show()

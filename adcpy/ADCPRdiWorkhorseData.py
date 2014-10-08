@@ -1,9 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-ADCPy
+"""ADCPTransectData subclass for the RDI Workhorse ADCP in transect mode
 
-A sub-class or ADCPTransectData from adcpy.py.  Reads RDI raw files from
-the RDI Workhorse ADCP
+Reads RDI raw files from the RDI Workhorse ADCP. Uses rdradcp.
 
 This code is open source, and defined by the included MIT Copyright License 
 

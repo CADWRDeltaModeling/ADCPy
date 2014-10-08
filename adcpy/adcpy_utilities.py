@@ -1,10 +1,7 @@
-"""
-adcpy_utilities
-
-Tools and calculations used by the adcpy module.  This module is independent of 
-adcpy, but is imported by it and is available as adcpy.util.  This tools are 
-designed to by leveraged for different tasks, the creation of new processing
-recipies and automated scripting.  They allows potentially complicated
+""" Calculations used by the adcpy module such as smoothing, principal flow direction and averaging
+This module is independent of adcpy, but is imported by it and is available as adcpy.util.  
+This tools were abstracted out of other classes, either because of potential for reuse in
+recipes, automated scripting or with data from outside adcpy.  They allows potentially complicated
 data processing using the adcpy module to remain readable, hopefully.
 
 This code is open source, and defined by the included MIT Copyright License 

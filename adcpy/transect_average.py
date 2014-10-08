@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
-transect_average
-
+"""Production example script that averages repeated tranects, resolving and visualizing secondary circulation
 Driver script that is designed to average repeated ADCP transect observations
 in an effort of reduce measurement error and better resolve non-steamwise and 
 velocities and secondary circulation features.  A summary of script functions:
@@ -212,10 +210,14 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
     fig = adcpy.plot.plot_vertical_panels((avg_panel,n_panel,sd_panel))
     return fig
 
+
+def main():
+    prepro_input = sys.argv[1]
+    transect_average(r'trn_pre_input_GEO20090117.py')
+    #transect_average()
     
 
 # run myself
 if __name__ == "__main__":
-    transect_average(r'trn_pre_input_GEO20090117.py')
-    #transect_average()
+    main()
 

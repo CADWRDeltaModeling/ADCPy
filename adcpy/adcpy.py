@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
-"""
-ADCPy
+""" Data structures and manipulation of ADCP data
 
-Overview: ADCPy allows the user to read raw (unprocessed) data from ADCP 
+ADCPy allows the user to read raw (unprocessed) data from ADCP 
 instruments, perform a suite of processing functions and data transformations, 
 and output summary data and related plots. By providing access to the raw ADCP 
 velocities, ADCPy allows exacting user control over the diagnosis of water 
@@ -20,6 +19,8 @@ Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 
 import os
 import numpy as np
+
+
 import scipy.stats.stats as sp
 #import scipy.stats.morestats as ssm
 import adcpy_utilities as util
