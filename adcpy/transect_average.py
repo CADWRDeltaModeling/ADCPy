@@ -81,13 +81,21 @@ def transect_average(pre_process_input_file=None):
     #grps_to_average = grps_to_average[1:]
 
     grp_num = 0
+    track_fig=101
     for grp in grps_to_average:
         if avg_plot_xy:
-            fig1 = adcpy.plot.plot_obs_group_xy_lines(grp,title='Group%03i Source Observations'%grp_num)
-            if avg_save_plots:
-                plt.savefig(os.path.join(outpath,"group%03i_xy_lines.png"%grp_num))
+            adcpy.plot.plot_obs_group_xy_lines(grp,fig=track_fig,title='Group%03i Source Observations'%grp_num)
 
-        avg = average_transects(grp,dxy=avg_dxy,dz=avg_dz,return_adcpy=True)
+        avg = average_transects(grp,dxy=avg_dxy,dz=avg_dz,return_adcpy=True,
+                                plotline_from_flow=True)
+
+        if avg_plot_xy:
+            adcpy.plot.get_fig(fig=track_fig)
+            plt.plot(avg.xy[:,0],avg.xy[:,1],label='average projection')
+            plt.legend(prop={'size':10})
+            if avg_save_plots:
+                plt.savefig(os.path.join(outpath,"group%03i_xy_lines.png"%grp_num))              
+        
         if avg_rotation is not None:
             avg = transect_rotate(avg,avg_rotation)
         if avg_std_drop > 0:
@@ -167,7 +175,7 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
         v_str = 'W'
     
     inv = 1/resolution
-    xx,yy,dd = adcpy.util.find_projection_distances(avg.xy)
+    xx,yy,dd,pline = adcpy.util.find_projection_distances(avg.xy)
     mtest = np.floor(avg.velocity[...,uvw]*inv)
     minv = np.nanmin(np.nanmin(mtest))*resolution
     mtest = np.ceil(avg.velocity[...,uvw]*inv)    
@@ -212,8 +220,8 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
 
 
 def main():
-    prepro_input = sys.argv[1]
-    transect_average(r'trn_pre_input_GEO20090117.py')
+    #prepro_input = sys.argv[1]
+    transect_average(r'trn_pre_input_GEO20090106.py')
     #transect_average()
     
 

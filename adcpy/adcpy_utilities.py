@@ -1689,7 +1689,7 @@ def find_xy_transect_loops(xy,xy_range=None,pline=None):
         mean path
     """
     if (xy_range is None):
-        xx,yy,xy_range = find_projection_distances(xy,pline=pline)
+        xx,yy,xy_range,xy_line = find_projection_distances(xy,pline=pline)
     #determine if mostly increasing or decreasing
     xy_diff = np.diff(xy_range)
     xy_sign = np.sign(np.sum(np.sign(xy_diff)))
@@ -1865,31 +1865,158 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
     return (Ums, U, total_survey_area, total_cross_sectional_area)
 
 
-def map_xy_to_line(xy):
+def unweight_xy_positions(xy,tollerance=5.0):
+    """
+    Sometimes you want to reduce the number of points on a line segment, for 
+    instance if you want to calculate a geometric centroid, but the somehow 
+    there was lot of loitering in one place.
+    """      
+    
+    n_xy, two = np.shape(xy)
+    included = np.ones(n_xy,np.bool)
+    test_xy = xy[0,:]
+    for i in range(1,n_xy):
+        if find_line_distance(test_xy,xy[i,:]) > tollerance:
+            test_xy = xy[i,:]
+        else:
+            included[i] = False
+    #print included
+    return np.copy(xy[included,:])
+
+def map_flow_to_line(in_xy,x_flow,y_flow):
+    """
+    Finds the mean flow direction, and then returns a line (defined by two 
+    endpoints) that is normal to the flow, and intersects the centroid of
+    the points given in xy.
+    Inputs:
+        xy = x-y locations , 2D array of shape [n,2], where [:,0] is x and [:,1] is y
+        x_flow = array of volumetric flows in the x direction, corresponding to 
+          the locations given in xy
+        x_flow = array of volumetric flows in the y direction, corresponding to 
+          the locations given in xy
+    Output:
+        numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
+    """
+    xy_linear_fit = map_xy_to_line(in_xy)
+    x_ctr = 0.5*(xy_linear_fit[0,0]+xy_linear_fit[1,0])
+    y_ctr = 0.5*(xy_linear_fit[0,1]+xy_linear_fit[1,1])
+    ctr = np.array([[x_ctr,y_ctr]])
+
+    theta = calc_net_flow_rotation(x_flow,y_flow) + np.pi*0.5
+    slope = np.tan(theta)
+    #from osgeo import ogr
+    #line = ogr.Geometry(ogr.wkbLineString)
+    #n_xy, two = np.shape(xy)
+    #for i in range(n_xy):
+    #    line.AddPoint(xy[i,0],xy[i,1])
+    #hull = line.ConvexHull()
+
+    #ctr = np.array([hull.Centroid().GetPoint(0)[:2]])
+    #ctr[0,0] = line.Centroid().GetX()
+    #ctr[0,1] = line.Centroid().GetY()
+
+    xd = in_xy[:,0] - ctr[0,0]
+    xmin = np.min(xd)
+    xmax = np.max(xd)
+    ymin = xmin*slope
+    ymax = xmax*slope
+    return np.array([[xmin+ctr[0,0],ymin+ctr[0,1]],[xmax+ctr[0,0],ymax+ctr[0,1]]])
+
+
+#def map_xy_to_line(xy):
+#    """
+#    Finds a best linear fit to a point cloud, using numpy polyfit.
+#    Inputs:
+#        xy = x-y locations , 2D array of shape [n,2], where [:,0] is x and [:,1] is y
+#    Output:
+#        numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
+#    """
+#    xy_reduced = un_weight_xy_positions(xy)
+#    #xy_reduced = xy
+#
+#    x0 = np.min(xy[:,0])
+#    y0 = np.min(xy[:,1])
+#    xd = xy[:,0] - x0
+#    #yd = xy[:,1] - y0
+#    coefs = np.polyfit(xy_reduced[:,0]-x0,xy_reduced[:,1]-y0, 1)
+#    y_fit = np.polyval(coefs,xd)+y0
+#    yd_fit = y_fit - np.min(y_fit)
+#    #y00_fit = np.max(yd1)
+#    # find line ends
+#    mag_fit = np.sqrt(yd_fit*yd_fit + xd*xd)
+#    #mini = np.argmin(mag_fit)
+#    #maxi = np.argmax(mag_fit)
+#    mini = np.argmin(xd)
+#    maxi = np.argmax(xd)
+#    return np.array([[xy[mini,0],y_fit[mini]],[xy[maxi,0],y_fit[maxi]]])    
+#    
+
+def map_xy_to_line(xy,unweight_xy=True):
     """
     Finds a best linear fit to a point cloud, using numpy polyfit.
     Inputs:
         xy = x-y locations , 2D array of shape [n,2], where [:,0] is x and [:,1] is y
     Output:
         numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
-    """      
-    x0 = np.min(xy[:,0])
-    y0 = np.min(xy[:,1])
-    xd = xy[:,0] - x0
-    yd = xy[:,1] - y0
-    coefs = np.polyfit(xd,yd, 1)
-    yd_fit = np.polyval(coefs,xd)+y0
-    y0_fit = np.min(yd_fit)
-    yd1 = yd_fit - y0_fit
-    y00_fit = np.max(yd1)
-    # find line ends
-    mag_fit = np.sqrt(y00_fit*y00_fit + xd*xd)
-    mini = np.argmin(mag_fit)
-    maxi = np.argmax(mag_fit)
-    return np.array([[xy[mini,0],yd_fit[mini]],[xy[maxi,0],yd_fit[maxi]]])    
-    
+    """
+    if unweight_xy:
+        xy_reduced = unweight_xy_positions(xy)
+    else:
+        xy_reduced = xy
+    coefs = np.polyfit(xy_reduced[:,1],xy_reduced[:,0], 1)
+    coefs_1 = np.copy(coefs)
+    coefs_1[0] = 1.0/coefs_1[0]
+    coefs_1[1] = -1.0*coefs_1[0]*coefs_1[1]
+    #print 'coefs:',coefs
+    #print 'coefs_1:',coefs_1    
+    x_fit = np.polyval(coefs,xy[:,1])
+    y_fit = np.polyval(coefs_1,xy[:,0])
+    if np.min(x_fit) > np.min(xy[:,0]):
+        mini = np.argmin(xy[:,0])
+        xy1 = np.array([xy[mini,0],y_fit[mini]])
+    else:
+        mini = np.argmin(x_fit)
+        xy1 = np.array([x_fit[mini],xy[mini,1]])
+    if np.max(x_fit) < np.max(xy[:,0]):
+        maxi = np.argmax(xy[:,0])
+        xy2 = np.array([xy[maxi,0],y_fit[maxi]])
+    else:
+        maxi = np.argmax(x_fit)
+        xy2 = np.array([x_fit[maxi],xy[maxi,1]])
+#    if np.min(y_fit) > np.min(xy[:,1]):
+#        mini = np.argmin(xy[:,1])
+#        xy1 = np.array([x_fit[mini],xy[mini,1]])
+#    else:
+#        mini = np.argmin(y_fit)
+#        xy1 = np.array([xy[mini,0],y_fit[mini]])
+#    if np.max(y_fit) < np.max(xy[:,1]):
+#        maxi = np.argmax(xy[:,1])
+#        xy2 = np.array([x_fit[maxi],xy[maxi,1]])
+#    else:
+#        maxi = np.argmax(y_fit)
+#        xy2 = np.array([xy[maxi,0],y_fit[maxi]])
+    return np.array([xy1,xy2])
 
-def find_line_distance(xy1,xy2):
+#def map_xy_to_line(xy):
+#    """
+#    Finds a best linear fit to a point cloud, using numpy polyfit.
+#    Inputs:
+#        xy = x-y locations , 2D array of shape [n,2], where [:,0] is x and [:,1] is y
+#    Output:
+#        numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
+#    """
+#    xy_reduced = un_weight_xy_positions(xy)
+#    #xy_reduced = xy
+#
+#    coefs = np.polyfit(xy_reduced[:,0],xy_reduced[:,1], 1)
+#    y_fit = np.polyval(coefs,xy[:,0])
+#    #mag_fit = np.sqrt(yd_fit*yd_fit + xd*xd)
+#    mini = np.argmin(xy[:,0])
+#    maxi = np.argmax(xy[:,0])
+#    return np.array([[xy[mini,0],y_fit[mini]],[xy[maxi,0],y_fit[maxi]]])
+
+
+def find_line_distance(in_xy1,in_xy2):
     """
     Finds distance between two points on a regular grid.  Can accept arrays of
     points.
@@ -1899,11 +2026,19 @@ def find_line_distance(xy1,xy2):
     Output:
         numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
     """      
+    if len(np.shape(in_xy1)) == 1:
+        xy1 = np.array([in_xy1])
+    else:
+        xy1 = in_xy1
+    if len(np.shape(in_xy2)) == 1:
+        xy2 = np.array([in_xy2])
+    else:
+        xy2 = in_xy2
     return np.sqrt((xy2[:,0]-xy1[:,0])**2 + \
                    (xy2[:,1]-xy1[:,1])**2)
     
 
-def find_projection_distances_new(xy,pline=None):
+def find_projection_distances(xy,pline=None):
     """
     Finds the distances between profiles(dd) along either a linear fit of 
     transect positions, or along a supplied line given by the pline.
@@ -1917,7 +2052,7 @@ def find_projection_distances_new(xy,pline=None):
         dd = distance along fitted line, in the direction of the fit line
     """
     if pline is None:
-        print 'No plot line specified - performing linear fit of projected data.'
+        #print 'No plot line specified - performing linear fit of projected data.'
         xy_line = map_xy_to_line(xy)
     else:
         xy_line = pline
@@ -1948,10 +2083,10 @@ def find_projection_distances_new(xy,pline=None):
     weird_line_format = np.array(createLine(xy_line[0,:],xy_line[1,:]))
     
     dd = linePosition(closest_points,weird_line_format)*np.sqrt(xy_line_d_sq)
-    return closest_points[:,0],closest_points[:,1],dd
+    return closest_points[:,0],closest_points[:,1],dd,xy_line
     
 
-def find_projection_distances(xy,pline=None):
+def find_projection_distances_old(xy,pline=None):
     """
     Finds the distances between profiles(dd) along either a linear fit of 
     transect positions, or along a supplied line given by the pline.
@@ -1971,8 +2106,8 @@ def find_projection_distances(xy,pline=None):
         xy_line_point = pline
     x0 = xy_line_point[0,0]                
     y0 = xy_line_point[0,1]                
-    x00 = xy_line_point[1,0] - x0          
-    y00 = xy_line_point[1,1] - y0           
+    x00 = xy_line_point[1,0] - x0
+    y00 = xy_line_point[1,1] - y0
     xd = xy[:,0] - x0
     yd = xy[:,1] - y0
     test_flip = False
@@ -1994,10 +2129,10 @@ def find_projection_distances(xy,pline=None):
     #fig=plt.figure()
     #plt.scatter(xd,yd)
     #plt.show()
-    return xd,yd,dd
+    return xd,yd,dd,xy_line_point
 
 
-def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
+def new_xy_grid_old(xy,z,dx,dz,pline=None,fit_to_xy=True):
     """
     Generates a regular grid (staight in the xy plane) with spacing
     set by dx and dy, using the same distance units as the current projection. 
@@ -2020,7 +2155,7 @@ def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
         my_dz = dz
     else:
         my_dz = -dz
-    xd,yd,dd = find_projection_distances(xy,pline=pline)
+    xd,yd,dd,xy_line = find_projection_distances(xy,pline=pline)
     # reverse dx if necessary
     dd_start = np.min(dd)
     dd_end = np.max(dd)
@@ -2046,7 +2181,7 @@ def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
         xy_new = np.zeros((np.size(xy_new_range),2),dtype=np.float64)
         xy_new[:,0] = xy_new_range*np.cos(grid_angle) + x0 # back to projection x - might be offset by up to dx
         xy_new[:,1] = xy_new_range*np.sin(grid_angle) + y0 # back to projection y - might be offset by up to dy
-        poo1, poo2, xy_new_range = find_projection_distances(xy_new,pline=pline)
+        poo1, poo2, xy_new_range,pline = find_projection_distances(xy_new,pline=pline)
     else:
         xy_new_range = np.arange(dd_start,dd_end,my_dx)
         # find x/y ppojected locations of new grid
@@ -2063,6 +2198,56 @@ def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
     z_new = np.arange(z[0],z[-1],my_dz)  # find z1
     
     return (dd,xy_new_range,xy_new,z_new)
+
+def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
+    """
+    Generates a regular grid (staight in the xy plane) with spacing
+    set by dx and dy, using the same distance units as the current projection. 
+    Generates a linear fit, or fits to input pline.
+    Inputs:
+        xy = x-y locations , 2D array of shape [ne,2], where [:,0] is x and [:,1] is y
+        z = z position vector of current grid, shape [nb]
+        dxy = new grid xy resolution in xy projection units
+        dz = new grid z resolution in z units
+        pline = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
+        fit_to_xy = if True, returns new grid that encompasses xy data only, if
+          False and pline is given, returns a regular grid exactly the length of pline
+    Returns:
+        xy_new = xy positions of new grid shape, 2D numpy array
+        z_new = z positions of new grid, 1D numpy array
+    """
+    # reverse dz if necessary
+    z_is_negative = np.less(sp.nanmean(z),0)
+    if z_is_negative == (dz < 0):
+        my_dz = dz
+    else:
+        my_dz = -dz
+    z_new = np.arange(z[0],z[-1],my_dz)
+
+    xd,yd,dd,pline = find_projection_distances(xy,pline=pline)
+    # find gridding dimensions
+    x0 = pline[0,0]
+    y0 = pline[0,1]
+    x00 = pline[1,0]-pline[0,0]
+    y00 = pline[1,1]-pline[0,1]
+    pline_distance = np.sqrt(x00**2 + y00**2)
+    xy_new_range = np.arange(0,pline_distance,np.abs(dx))
+    grid_angle = np.arctan2(y00,x00)
+    xy_new = np.zeros((np.size(xy_new_range),2),dtype=np.float64)
+    xy_new[:,0] = xy_new_range*np.cos(grid_angle) + x0 # back to projection x - might be offset by up to dx
+    xy_new[:,1] = xy_new_range*np.sin(grid_angle) + y0 # back to projection y - might be offset by up to dy
+    tmpx, tmpy, xy_new_range,pline = find_projection_distances(xy_new,pline=pline)
+    if fit_to_xy:
+        # remove cells beyond dd
+        dd_start = np.min(dd)
+        dd_end = np.max(dd)
+        fitted = np.ones(np.size(xy_new_range),np.bool)
+        for i in range(np.size(xy_new_range)):
+            if xy_new_range[i] < dd_start or xy_new_range[i] > dd_end:
+                fitted[i] = False
+        return (dd,xy_new_range[fitted],xy_new[fitted,:],z_new)
+    else:
+        return (dd,xy_new_range,xy_new,z_new)
 
 
 def newer_new_xy_grid(xy,z,dx,dz,pline=None):
@@ -2086,7 +2271,7 @@ def newer_new_xy_grid(xy,z,dx,dz,pline=None):
         my_dz = dz
     else:
         my_dz = -dz
-    xd,yd,dd = find_projection_distances(xy,pline=pline)
+    xd,yd,dd,pline = find_projection_distances(xy,pline=pline)
     # reverse dx if necessary
     dd_start = np.min(dd)
     dd_end = np.max(dd)
@@ -2324,8 +2509,8 @@ def prep_xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None):
     if pre_calcs is None:
         # generate projected distances between xy points
         pline = np.array([[xy_new[0,0],xy_new[0,1]],[xy_new[-1,0],xy_new[-1,1]]])
-        xtemp,ytemp,xy_range = find_projection_distances(xy,pline=pline)
-        xtemp,ytemp,xy_new_range = find_projection_distances(xy_new)
+        xtemp,ytemp,xy_range,pline = find_projection_distances(xy,pline=pline)
+        xtemp,ytemp,xy_new_range,new_pline = find_projection_distances(xy_new)
         if is_array:
             zmesh_new, xymesh_new = np.meshgrid(z_new,xy_new_range)
             zmesh, xymesh = np.meshgrid(z,xy_range)

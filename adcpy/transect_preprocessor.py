@@ -88,7 +88,7 @@ def transect_preprocessor(option_file=None):
         print "Path or file (%s) not found - exiting."%path_or_file
         exit()
     
-    outpath = os.path.join(data_path,'ADCPy')
+    outpath = os.path.join(data_path,'adcpy')
     if not os.path.exists(outpath):
         os.makedirs(outpath)
    

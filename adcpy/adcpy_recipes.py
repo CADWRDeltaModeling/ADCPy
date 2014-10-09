@@ -19,7 +19,8 @@ import datetime
 
 import adcpy
 
-def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,stats=True):
+def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
+                      stats=True,plotline_from_flow=False):
     """ 
     This method takes a list of input ADCPy transect objects, and:
     1) Projects and re-grids each transect to either the input plotline, or a best
@@ -54,12 +55,16 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,stats=Tru
     
     # find common grid
     if plotline is None:    
-        xy_line = adcpy.util.map_xy_to_line(xy_data)
+        if plotline_from_flow:
+            flows = transects[0].calc_ensemble_flow(range_from_velocities=False)
+            xy_line = adcpy.util.map_flow_to_line(xy_data,flows[:,0],flows[:,1])
+        else:
+            xy_line = adcpy.util.map_xy_to_line(xy_data)
     else:
         xy_line = plotline
     # NEED logic around determining whether original data was negative down, positive up, etc
     z_mm = np.array([np.max(z_data),np.min(z_data)])
-    (dd,xy_new_range,xy_new,z_new) = adcpy.util.new_xy_grid(xy_data,z_mm,dxy,dz,xy_line)  
+    (dd,xy_new_range,xy_new,z_new) = adcpy.util.new_xy_grid(xy_data,z_mm,dxy,dz,xy_line,True)  
         
     # initialize arrays
     xy_bins = adcpy.util.find_regular_bin_edges_from_centers(xy_new_range)
@@ -74,7 +79,7 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,stats=Tru
     for i in range(3):
         bin_ave_inputs = []
         for t in transects:
-            xx,yy,xy_range = adcpy.util.find_projection_distances(t.xy,xy_line)
+            xx,yy,xy_range,xy_line = adcpy.util.find_projection_distances(t.xy,xy_line)
             bin_ave_inputs.append(adcpy.util.xy_z_linearize_array(xy_range,
                                               t.bin_center_elevation,
                                               t.velocity[...,i]))
@@ -348,22 +353,22 @@ def group_according_to_gap(flat_list,gaps,max_gap,max_group_size):
     group_gaps = list()
     sub_group = list()
     sub_gaps = list()
+    sub_group.append(flat_list[0])
     for i in range(len(gaps)):
         if ~within_gap[i] or len(sub_group) >= max_group_size:
-             if sub_group:
-                 groups.append(sub_group)
-                 group_gaps.append(sub_gaps)
-                 sub_group = []
-                 sub_gaps = []
+            groups.append(sub_group)
+            if not sub_gaps:
+                sub_gaps.append((None,))
+            group_gaps.append(sub_gaps)
+            sub_group = []
+            sub_gaps = []
         else:
-            if sub_group:
-                sub_group.append(flat_list[i])
-            else:
-                sub_group.extend((flat_list[i],flat_list[i+1]))
             sub_gaps.append(gaps[i])
-    if sub_group:
-        groups.append(sub_group)
-        group_gaps.append(sub_gaps)
+        sub_group.append(flat_list[i+1])
+    groups.append(sub_group)
+    if not sub_gaps:         
+        sub_gaps.append((None,))
+    group_gaps.append(sub_gaps)
     # returning (list of file lists, list of gap time lists)
     return (groups, group_gaps)
 
@@ -398,7 +403,7 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
         rfv = True
     elif adcp.bt_depth is None:
         rfv = True
-    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
     dxy = abs(dd[0]-dd[1])
     dz = abs(adcp.bin_center_elevation[0]-adcp.bin_center_elevation[1])
     (depths, velocity_mask) = adcp.get_velocity_mask(range_from_velocities=rfv,nan_mask=True)
@@ -519,7 +524,7 @@ def find_UV_dispersion(adcp):
     else:
         (depth, velocity_mask) = adcp.get_velocity_mask(range_from_velocities=True,
                                                         nan_mask=True)
-    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
     return  adcpy.util.calcKxKy(adcp.velocity[:,:,0],
                                 adcp.velocity[:,:,1],
                                 dd,

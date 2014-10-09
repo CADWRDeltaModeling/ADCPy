@@ -19,8 +19,6 @@ Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 
 import os
 import numpy as np
-
-
 import scipy.stats.stats as sp
 #import scipy.stats.morestats as ssm
 import adcpy_utilities as util
@@ -578,7 +576,7 @@ class ADCPData(object):
             elev = -1.0*self.bin_center_elevation
             axis = 1
         elif sd_axis=='ensemble':
-            xd,yd,elev = util.find_projection_distances(self.xy)
+            xd,yd,elev,xy_line = util.find_projection_distances(self.xy)
             axis = 0
         else:
             print "Unkown axis '%s' passed to sd_drop; vaid options are 'elevation' and 'ensemble'"%sd_axis
@@ -1033,7 +1031,8 @@ class ADCPTransectData(ADCPData):
                  self.bt_velocity[:,1]) = self.rotate_bt_velocities(self.rotation_angle)           
         
 
-    def get_velocity_mask(self,elev_line=None,range_from_velocities=False,mask_region='above'):
+    def get_velocity_mask(self,elev_line=None,range_from_velocities=False,
+                          mask_region='above',nan_mask=False):
         """ 
         Generates a either a boolean mask, or a 1/NaN mask, correspnding to
         valid velocties measurements. If elev_line is given values beyond
@@ -1049,10 +1048,12 @@ class ADCPTransectData(ADCPData):
               velocities
         """
         my_elev_line = np.copy(elev_line)
-        if self.bt_depth is not None and elev_line is not None:
+        if self.bt_depth is not None and elev_line is None:
             my_elev_line = self.bt_depth
-        return super(ADCPTransectData,self).get_velocity_mask(my_elev_line,range_from_velocities)
-
+        return super(ADCPTransectData,self).get_velocity_mask(my_elev_line,
+                                                                range_from_velocities,
+                                                                mask_region,
+                                                                nan_mask)
 
     def calc_crossproduct_flow(self):
         """

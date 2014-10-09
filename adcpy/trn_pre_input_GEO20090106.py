@@ -10,18 +10,15 @@
 
 # ADCP Data File location(s)
 # -----------------------------------------------------------------------------
-
-#working_directory = r'Y:\temp\ADCP_2008\NDSOS_DLADCP.VelocityData\5thRelease\GEO5thRelease\GEO20090116'
-
-working_directory = r'C:\Delta\ADCPy\GEO20090116'
-        # or None for current directory
-#working_directory = r'/Volumes/Aux/temp/adcp_anaylsis_stations/RIO20100309'        # or None for current directory
-
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WGB20090721'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WGA20090722'        # or None for current directory
+
+working_directory = r'Y:\temp\ADCP_2008\NDSOS_DLADCP.VelocityData\4thRelease\GEO4thRelease\GEO20090106'        # or None for current directory
+#working_directory = r'/Volumes/Aux/temp/adcp_anaylsis_stations/RIO20100309'        # or None for current directory
+
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\TMS20090513'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\JPT20080618'
-#working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU022510' # can't head_correct, not enough bins
+#working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU022510' # can't headcorrect, not enough bins
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU012810'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU060408' # no nav
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\MRU112707' # no nav
@@ -63,4 +60,4 @@ save_preprocessed_data_to_netcdf = True    # Switch to output results to netCDF-
 use_netcdf_data_compression = True      # Switch to use NetCDF 4 data compression to save disk space in data and results files.  {True or False}
 
 # Debug options
-debug_stop_after_n_transects = 16       # False, or number to limit return to
+debug_stop_after_n_transects = 8       # False, or number to limit return to

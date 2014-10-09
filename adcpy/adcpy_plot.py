@@ -257,7 +257,7 @@ class QPanel(object):
                        r'%3.2f '%qk_value + r'$ \frac{m}{s}$', labelpos='W',)
 
         if self.title is not None:
-            plt.title(self.title)
+            plt.title(self.title,y=1.06)
         if self.x_is_mtime:
             ax.xaxis_date()
             plt.gcf().autofmt_xdate()
@@ -419,7 +419,7 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
         fig = plt.figure(fig,figsize=(10,4))
     else:
         plt.clf()
-    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
     stream_wise = get_basic_velocity_panel(adcp.velocity[:,:,1],res=0.01)
     stream_wise.x = dd
     stream_wise.y = adcp.bin_center_elevation
@@ -452,7 +452,7 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
         fig = matplotlib figure object, or
         vectors = QPanel object
     """        
-    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
     dude = np.zeros((adcp.n_ensembles,2),np.float64)
     velocity = adcp.get_unrotated_velocity()
     # this doesn't factor in depth, may integrate bad values if the have not been filtered into NaNs somehow
@@ -495,17 +495,17 @@ def plot_obs_group_xy_lines(adcp_obs,fig=None,title=None):
     plt.hold(True)
     legends = []
     for a in adcp_obs:
-        plot_xy_line(a,fig,use_stars_at_xy_locations=False)
         if a.mtime is not None:
-            legends.append(a.source+"; "+fmt_dnum(a.mtime[0]))
+            label = a.source+"; "+fmt_dnum(a.mtime[0])
         else:
-            legends.append(a.source)
-    plt.legend(legends,prop={'size':10})
+            label = a.source
+        plot_xy_line(a,fig,label=label,use_stars_at_xy_locations=False)
+    plt.legend(prop={'size':10})
     if title is not None:
-        plt.title(title)
+        plt.title(title,y=1.06)
     return fig
 
-def plot_xy_line(adcp,fig=None,title=None,use_stars_at_xy_locations=True):
+def plot_xy_line(adcp,fig=None,title=None,label=None,use_stars_at_xy_locations=True):
     """
     Produces a quick plot of the adcp ensemble x-y locations, from an ADCPData
     object.
@@ -527,11 +527,11 @@ def plot_xy_line(adcp,fig=None,title=None,use_stars_at_xy_locations=True):
     else:
         raise Exception,"plot_xy_line(): no position data in ADCPData object"
     if use_stars_at_xy_locations:
-        plt.plot(x,y,marker='*')
+        plt.plot(x,y,marker='*',label=label)
     else: 
-        plt.plot(x,y)
+        plt.plot(x,y,label=label)
     if title is not None:
-        plt.title(title)
+        plt.title(title,y=1.06)
     return fig
     
 
@@ -554,7 +554,7 @@ def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wre
     res = [ures, vres, wres]
     if adcp.xy is not None:
         if np.size(adcp.xy[:,0]) == adcp.n_ensembles:
-            xd,yd,dx = adcpy.util.find_projection_distances(adcp.xy)
+            xd,yd,dx,xy_line = adcpy.util.find_projection_distances(adcp.xy)
     if adcp.mtime is not None:
         if np.size(adcp.mtime) == adcp.n_ensembles:
             dt = adcp.mtime
@@ -624,7 +624,7 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     u_panel.xlabel = None
     v_panel.chop_off_nans = True
 
-    xd,yd,dd = adcpy.util.find_projection_distances(adcp.xy)           
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)           
 
     plt.subplot(221)
     vectors.plot()
