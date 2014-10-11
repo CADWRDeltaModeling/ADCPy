@@ -471,12 +471,12 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
         rotation = one of:
           None - no rotation of averaged velocity profiles
          'normal' - rotation based upon the normal to the plotline (default rotation type)
-         'pricipal flow' - uses the 1st principal component of variability in UV flow direction
+         'pricipal flow' - uses the 1st principal component of variability in uv flow direction
          'Rozovski' - individual rotation of each verticle velocity to maximize U 
          'no transverse flow' - rotation by the net flow vector is used to minnumize V
         xy_line = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
     Returns
-        adcp_transect = ADCPTransectData object with rotated UV velocities
+        adcp_transect = ADCPTransectData object with rotated uv velocities
     """
     if rotation == "normal":
         # find angle of line:
@@ -499,12 +499,12 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
     else:
         theta = rotation
     
-    adcp_transect.set_rotation(theta,'UV')
+    adcp_transect.set_rotation(theta,'uv')
 
     return adcp_transect
 
 
-def find_UV_dispersion(adcp):
+def find_uv_dispersion(adcp):
     """
     Calculates dispersion coeffcients of velocties in adcp according to 
     Fischer et al. 1979

@@ -441,7 +441,7 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
 
 def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_panel=False):
     """
-    Generates a QPanel, plotting mean UV velocity vectors in the x-y plane.
+    Generates a QPanel, plotting mean uv velocity vectors in the x-y plane.
     Inputs:
         adcp = ADCPData object
         fig = input figure number [integer or None]
@@ -617,7 +617,7 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     vectors = plot_ensemble_mean_vectors(adcp,n_vectors=30,return_panel=True)
     vectors.x = vectors.x - np.min(vectors.x)
     vectors.y = vectors.y - np.min(vectors.y)
-    u_panel,v_panel = plot_uvw_velocity(adcp,uvw='UV',fig=fig,ures=ures,
+    u_panel,v_panel = plot_uvw_velocity(adcp,uvw='uv',fig=fig,ures=ures,
                                         vres=vres,return_panels=True)
     
     u_panel.chop_off_nans = True

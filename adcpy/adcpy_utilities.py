@@ -380,7 +380,7 @@ def get_axis_num_from_str(axes_string):
     This method returns a list of 0,1, and 2s corresponding to an input 
     string composed u,v, and ws.
     Inputs:
-        axes_string = string composed of U V or W only [str]
+        axes_string = string composed of u v or w only [str]
     Returns:
         ax_list = python list containing the integers 0,1, or 2 
     """    

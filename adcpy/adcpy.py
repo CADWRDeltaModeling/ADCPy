@@ -36,17 +36,25 @@ adcpdata_subclass_names = [ 'ADCPRdiWorkhorseData',  # RDI Workhorse / WinRiver 
                             #'ADCPMooredData',        # General sub-class of ADCPData with moored-specific functionality
 
 def open_adcp(file_path,file_type=None,**kwargs):
-    """ 
+    """ Open an ADCP file and return an ADCPData instance.
     Attempts to determine the type of a passed ADCP data file, and 
     will pass the file type to the appropriate subclass for reading, 
     and will return an populated AdcpData structure if possible.  Optionally
     the file type (and subclass reading) can be forced by assigning one
     of the known subclass names as a string.
-    Inputs:
-        file_path = path and filename of ADCPy-supported file to open [str]
-        file_type = either 'raw_file' or 'nc_file' [str], optional to help in deciding how to open file
-        ** additional keyword=argument pairs that will be passed to the appropriate open call
-    Returns:
+    
+    Parameters
+    ----------
+    
+        file_path : str 
+        path and filename of ADCPy-supported file to open [str]
+        
+        file_type : str either 'raw_file' or 'nc_file' [str], optional to help in deciding how to open file
+        
+        **kwargs additional keyword=argument pairs that will be passed to the appropriate open call
+    
+    Returns
+    -------
         ADCPData class object (or sub-class)
     """
     file_name,ext = os.path.splitext(file_path)
@@ -581,7 +589,7 @@ class ADCPData(object):
         else:
             print "Unkown axis '%s' passed to sd_drop; vaid options are 'elevation' and 'ensemble'"%sd_axis
             raise ValueError
-        # drop U/V velocity values, using total UV magnitude
+        # drop U/V velocity values, using total uv magnitude
         drop = util.find_sd_greater(v_mag,elev,sd,axis=axis)          
         for i in range(3):
             if i == 2:
@@ -599,7 +607,7 @@ class ADCPData(object):
                                                                                              warning_fraction))
 
 
-    def rotate_UV_velocities(self,radian):
+    def rotate_uv_velocities(self,radian):
         """
         Re-orients U and V velocities to an arbitrary rotation, without self
         assignment.
@@ -614,7 +622,7 @@ class ADCPData(object):
                                   
 
 
-    def set_rotation(self,radian,axes_string='UV'):
+    def set_rotation(self,radian,axes_string='uv'):
         """
         Re-orient designated velocities to an arbitrary rotation.
             Python list of 2 velocity numpy arrays.
@@ -1007,9 +1015,8 @@ class ADCPTransectData(ADCPData):
         else:
             return (0.0,0.0)        
 
-    def set_rotation(self,radian,axes_string='UV'):
-        """
-        Re-orient designated velocities to an arbitrary rotation.
+    def set_rotation(self,radian,axes_string='uv'):
+        """ Re-orient designated velocities to an arbitrary rotation.
             Python list of 2 velocity numpy arrays.
         Inputs:
             radian = rotation in radians
@@ -1018,9 +1025,10 @@ class ADCPTransectData(ADCPData):
               being in the 0-degree direction and the second the 90-degree
               direction
         """
+        
         old_rotation = self.rotation_angle
         super(ADCPTransectData,self).set_totation(radian)
-        if axes_string != 'UV':
+        if axes_string != 'uv':
             print "WARNING: bottom track velocity rotation not supported for axes: ",axes_string
         elif self.bt_velocity is not None:
             if old_rotation is not None:
