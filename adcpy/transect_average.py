@@ -220,9 +220,9 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
 
 
 def main():
-    #prepro_input = sys.argv[1]
-    transect_average(r'trn_pre_input_GEO20090106.py')
-    #transect_average()
+    import sys
+    prepro_input = sys.argv[1]
+    transect_average(prepro_input)
     
 
 # run myself
