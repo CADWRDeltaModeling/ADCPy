@@ -22,7 +22,7 @@ ADCPy is constructed to allow a high level of control and tuning over processing
 
     import ADCPy_recipes
     adcp = ADCPy_recipes.transect_rotate(adcp,’principal flow’)
-    fig = ADCPy.plot.plot_UVW_velocity_array(adcp.velocity)
+    fig = ADCPy.plot.plot_uvw_velocity_array(adcp.velocity)
 
 4. Save data to disk::
 
@@ -185,7 +185,7 @@ Check the options in the transect_average.py file.  We have set the options as f
     avg_plot_avg_n_sd = True 
     avg_plot_mean_vectors = True 
     avg_plot_secondary_circulation = True 
-    avg_plot_UVW_velocity_array = True 
+    avg_plot_uvw_velocity_array = True 
     avg_plot_flow_summmary = True 
     avg_save_plots = True 
     avg_show_plots = False
