@@ -438,10 +438,46 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
     if title is not None:
         plt.title(title)
     return fig
+    
+def plot_secondary_circulation_over_streamwise(adcp,u_vecs,v_vecs,fig=None,title=None):
+    """
+    Generates a with a single panel, plotting U velocity as an IPanel, overlain by
+    VW vectors from a QPanel.
+    Inputs:
+        adcp = ADCPData object
+        u_vecs,v_vecs = desired number of horizontal/vertical vectors [integers]
+        fig = input figure number [integer or None]
+        title = figure title text [string or None]
+    Returns:
+        fig = matplotlib figure object
+    """      
+    if fig is None:
+        fig = plt.figure(fig,figsize=(10,4))
+    else:
+        plt.clf()
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
+    stream_wise = get_basic_velocity_panel(adcp.velocity[:,:,0],res=0.01)
+    stream_wise.x = dd
+    stream_wise.y = adcp.bin_center_elevation
+    stream_wise.chop_off_nans = True
+    secondary = QPanel(velocity = adcp.velocity[:,:,1:],
+                      x = dd,
+                      y = adcp.bin_center_elevation,
+                      xpand = None,
+                      v_scale = 1.5,
+                      u_vecs = u_vecs,
+                      v_vecs = v_vecs,
+                      arrow_color = 'k',
+                      units = 'm/s')
+    stream_wise.plot()
+    secondary.plot()
+    if title is not None:
+        plt.title(title)
+    return fig
 
 def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_panel=False):
     """
-    Generates a QPanel, plotting mean UV velocity vectors in the x-y plane.
+    Generates a QPanel, plotting mean uv velocity vectors in the x-y plane.
     Inputs:
         adcp = ADCPData object
         fig = input figure number [integer or None]
@@ -451,24 +487,31 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
     Returns:
         fig = matplotlib figure object, or
         vectors = QPanel object
-    """        
-    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
+    """
     dude = np.zeros((adcp.n_ensembles,2),np.float64)
     velocity = adcp.get_unrotated_velocity()
     # this doesn't factor in depth, may integrate bad values if the have not been filtered into NaNs somehow
     dude[:,0] = sp.nanmean(velocity[:,:,0],axis=1)
     dude[:,1] = sp.nanmean(velocity[:,:,1],axis=1)
     vectors = QPanel(velocity = dude,
-                      x = adcp.xy[:,0],
-                      y = adcp.xy[:,1],
-                      #v_scale = 25,
                       u_vecs = n_vectors,
-                      xlabel = 'm',
-                      ylabel = 'm',
                       arrow_color = 'k',
-                      equal_axes = True,
                       title = title,
                       units = 'm/s')
+    if adcp.xy is not None:        
+        vectors.x = adcp.xy[:,0]
+        vectors.y = adcp.xy[:,1]
+        vectors.xlabel = 'm'
+        vectors.ylabel = 'm'
+        vectors.equal_axes = True       
+    elif adcp.lonlat is not None:
+        vectors.x = adcp.lonlat[:,0]
+        vectors.y = adcp.lonlat[:,1]
+        vectors.xy_is_lonlat = True
+    else:
+        vectors.x = adcp.mtime
+        vectors.y = np.zeros(np.size(vectors.x))
+        vectors.x_is_mtime = True
     if return_panel:
         return vectors
     else:                  
@@ -617,7 +660,7 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     vectors = plot_ensemble_mean_vectors(adcp,n_vectors=30,return_panel=True)
     vectors.x = vectors.x - np.min(vectors.x)
     vectors.y = vectors.y - np.min(vectors.y)
-    u_panel,v_panel = plot_uvw_velocity(adcp,uvw='UV',fig=fig,ures=ures,
+    u_panel,v_panel = plot_uvw_velocity(adcp,uvw='uv',fig=fig,ures=ures,
                                         vres=vres,return_panels=True)
     
     u_panel.chop_off_nans = True

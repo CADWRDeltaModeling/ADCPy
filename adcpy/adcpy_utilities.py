@@ -380,7 +380,7 @@ def get_axis_num_from_str(axes_string):
     This method returns a list of 0,1, and 2s corresponding to an input 
     string composed u,v, and ws.
     Inputs:
-        axes_string = string composed of U V or W only [str]
+        axes_string = string composed of u v or w only [str]
     Returns:
         ax_list = python list containing the integers 0,1, or 2 
     """    
@@ -1516,8 +1516,6 @@ def rotate_velocity(delta,vE_in,vN_in):
         if np.size(delta) != ne and np.size(delta) != 1:
             error_dims = 1
         elif np.size(delta) == 1:
-            print 'ne',ne
-            print 'delta',delta
             delta1 = np.ones([ne,1],np.float64)*delta  # create vertical array
         else:
             if len(np.shape(delta)) == 1:
@@ -2422,7 +2420,7 @@ def un_flip_bin_average(xy_range,z,avg):
         flipped.append(a)
     return flipped
 
-def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False):
+def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=0):
     """
     Bins  input values in the 1D or 2D nparray 'values' into the bins with
     edges defined by xy_bins (and z_bins if 2D).  Optionally returns the number
@@ -2444,6 +2442,50 @@ def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False):
     if z is not None:
         z_not_none = True
 
+    bin_mean, bin_n = calc_bin_mean_n(xy,xy_bins,values,z,z_bins)
+            
+    if return_stats or sd_drop:
+        bin_sd,xy_bin_num,z_bin_num = \
+          calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n)
+        if not sd_drop:
+            return (bin_mean, bin_n, bin_sd)
+    else:
+        return (bin_mean,)
+
+    if sd_drop:
+        # drop outliers from data
+        for n in range(np.size(xy)):
+            i = xy_bin_num[n]-1
+            if z_not_none:
+                j = z_bin_num[n]-1
+                if i > 0 and j > 0:
+                    if values[n] > sd_drop*bin_sd[i,j]:
+                        xy[n],z[n],values[n] = (np.nan,np.nan,np.nan)
+            elif i > 0:
+                if values[n] > sd_drop*bin_sd[i]:
+                    xy[n],values[n] = np.nan
+        
+        # reshape data to remove nan values
+        nnan = ~np.isnan(values)
+        xy = xy[nnan]
+        z = z[nnan]
+        values = values[nnan]
+ 
+        bin_mean, bin_n = calc_bin_mean_n(xy,xy_bins,values,z,z_bins)
+        if return_stats:
+            bin_sd,xy_bin_num,z_bin_num = \
+              calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n)
+            return (bin_mean, bin_n, bin_sd)
+        else:
+            return (bin_mean,)
+                  
+        
+def calc_bin_mean_n(xy,xy_bins,values,z=None,z_bins=None): 
+ 
+    z_not_none = False
+    if z is not None:
+        z_not_none = True
+
     if z_not_none:
         # 2D bin average 
         bin_n, e1, e2 = np.histogram2d(xy,z,bins = (xy_bins,z_bins))
@@ -2455,27 +2497,33 @@ def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False):
         bin_n, e1 = np.histogram(xy,bins = xy_bins)
 
     bin_mean = bin_sum/bin_n
-            
-    if return_stats:
-        xy_bin_num = np.digitize(xy,xy_bins)
-        xy_bin_num[xy_bin_num>=np.size(xy_bins)] = 0
-        sq_sums = np.zeros(np.shape(bin_mean),np.float64)
-        if z_not_none:
-            z_bin_num = np.digitize(z,z_bins)
-            z_bin_num[z_bin_num>=np.size(z_bins)] = 0
-        for n in range(np.size(xy)):
-            i = xy_bin_num[n]-1
-            if z_not_none:
-                j = z_bin_num[n]-1
-                if i > 0 and j > 0:
-                    sq_sums[i,j] += (values[n] - bin_mean[i,j])**2
-            elif i > 0:
-                sq_sums[i] += (values[n] - bin_mean[i])**2
-        bin_sd = np.sqrt(sq_sums/bin_n)
-        return (bin_mean, bin_n, bin_sd)
+    return (bin_mean, bin_n)
+
+def calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n):
+    
+    z_not_none = False
+    if z is not None:
+        z_not_none = True
+
+    xy_bin_num = np.digitize(xy,xy_bins)
+    xy_bin_num[xy_bin_num>=np.size(xy_bins)] = 0
+    sq_sums = np.zeros(np.shape(bin_mean),np.float64)
+    if z_not_none:
+        z_bin_num = np.digitize(z,z_bins)
+        z_bin_num[z_bin_num>=np.size(z_bins)] = 0
     else:
-        return (bin_mean,)
-        
+        z_bin_num = None
+    for n in range(np.size(xy)):
+        i = xy_bin_num[n]-1
+        if z_not_none:
+            j = z_bin_num[n]-1
+            if i > 0 and j > 0:
+                sq_sums[i,j] += (values[n] - bin_mean[i,j])**2
+        elif i > 0:
+            sq_sums[i] += (values[n] - bin_mean[i])**2
+    return (np.sqrt(sq_sums/bin_n),xy_bin_num,z_bin_num)
+
+
 
 def prep_xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None):
     """

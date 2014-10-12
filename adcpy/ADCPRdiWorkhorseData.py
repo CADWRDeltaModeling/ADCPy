@@ -375,7 +375,6 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
                 self.raw_adcp.config = rdradcp.Config()
                 cfg = raw_grp.groups['config']
                 for k in raw_grp.groups['config'].__dict__:
-                    print 'config var: ',k
                     exec("self.raw_adcp.config.%s = cfg.%s"%(k,k))
 
             if 'ensemble_data' in raw_grp.variables:

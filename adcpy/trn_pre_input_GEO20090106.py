@@ -26,6 +26,10 @@ working_directory = r'Y:\temp\ADCP_2008\NDSOS_DLADCP.VelocityData\4thRelease\GEO
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WCI102009' # done
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WCI050608'
 
+#file_list = ['GEO4thRelease641r.000',
+#             'GEO4thRelease642r.000']
+file_list = None
+
 # Processing Options
 # -----------------------------------------------------------------------------
 xy_projection = r'EPSG:26910' # The text-based EPSG code describing the map projection (in Northern CA, UTM Zone 10N = 'EPSG:26910')
@@ -60,4 +64,4 @@ save_preprocessed_data_to_netcdf = True    # Switch to output results to netCDF-
 use_netcdf_data_compression = True      # Switch to use NetCDF 4 data compression to save disk space in data and results files.  {True or False}
 
 # Debug options
-debug_stop_after_n_transects = 8       # False, or number to limit return to
+debug_stop_after_n_transects = False       # False, or number to limit return to

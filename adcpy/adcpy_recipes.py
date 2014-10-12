@@ -11,6 +11,7 @@ Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 import numpy as np  # numpy 1.7 
 import glob
 import os
+import csv
 import scipy.stats as sp
 #import scipy.signal as sps
 import scipy.stats.morestats as ssm
@@ -20,7 +21,7 @@ import datetime
 import adcpy
 
 def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
-                      stats=True,plotline_from_flow=False):
+                      stats=True,plotline_from_flow=False,sd_drop=0):
     """ 
     This method takes a list of input ADCPy transect objects, and:
     1) Projects and re-grids each transect to either the input plotline, or a best
@@ -75,9 +76,11 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         avg.velocity_n = np.empty(new_shape)
         avg.velocity_sd = np.empty(new_shape)
 
+
     # generate linear xy,z,velocties for bin averaging, perform bin averaging
     for i in range(3):
         bin_ave_inputs = []
+        mtimes = []
         for t in transects:
             xx,yy,xy_range,xy_line = adcpy.util.find_projection_distances(t.xy,xy_line)
             bin_ave_inputs.append(adcpy.util.xy_z_linearize_array(xy_range,
@@ -86,7 +89,7 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         xy = np.hstack([bin_ave_inputs[j][0] for j in range(n_transects)])
         z = np.hstack([bin_ave_inputs[j][1] for j in range(n_transects)])
         values = np.hstack([bin_ave_inputs[j][2] for j in range(n_transects)])
-        bin_ave = adcpy.util.bin_average(xy,xy_bins,values,z,z_bins,return_stats=stats)
+        bin_ave = adcpy.util.bin_average(xy,xy_bins,values,z,z_bins,return_stats=stats,sd_drop=sd_drop)
         bin_ave = adcpy.util.un_flip_bin_average(xy_new_range,z_new,bin_ave)
         if stats:
             (avg.velocity[...,i],
@@ -95,7 +98,7 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         else:
             avg.velocity[...,i] = bin_ave[0]
     
-    # perform desingnated rotation
+    # update adcpData object
     avg.xy = xy_new
     avg.bin_center_elevation = z_new
     avg.n_ensembles = new_shape[0]
@@ -106,6 +109,11 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         avg.xy_srs = transects[0].xy_srs
         sources = [transects[i].source for i in range(n_transects)]
         avg.source = "\n".join(sources)
+        mtimes = [sp.nanmedian(transects[i].mtime) for i in range(n_transects)]
+        mtimes = np.array(filter(None,mtimes))
+        if mtimes.any():
+            avg.mtime = np.ones(new_shape[0],np.float64) * sp.nanmean(mtimes)
+            avg.mtime.any()
         if plotline is not None:
             plotlinestr = "[%f,%f],[%f,%f]"%(plotline[0,0],
                                              plotline[0,1],
@@ -119,21 +127,22 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         return avg.velocity
     
 
-def write_csv_velocity(adcp,csv_filename,no_header=False):
+def write_csv_velocity_array(adcp,csv_filename,no_header=False,un_rotate_velocties=True):
     """ 
-    Writes comma-delimited velocties to a text file, optionally with xy-positions
-    of lon-lat positions, and bin_center_elveations.  The write order for a 2D
-    velocity aray is the first (leftmost) axis is written horizontally.
+    Writes comma-delimited u,v,w velocties to a text file.
     Inputs:
         ADCP = ADCPData object
         csv_filename = file path of output file
-        no_header = boolean, True = don'r write position data, False = write position data
+        no_header = boolean, True = don't write header line 
     Returns:
         nothing
     """    
     # direct dump of numpy array - opps required numpy v1.8
     #np.savetext(csv_filename,adcp.velocity,delimiter=",")
-    import csv
+    if un_rotate_velocties:
+        v = adcp.get_unrotated_velocity()
+    else:
+        v = adcp.velocity
     with open(csv_filename, 'wb') as csvfile:
         arraywriter = csv.writer(csvfile, delimiter=',',
                                  quoting=csv.QUOTE_MINIMAL)
@@ -152,14 +161,121 @@ def write_csv_velocity(adcp,csv_filename,no_header=False):
             arraywriter.writerow(adcp.bin_center_elevation.tolist())
         arraywriter.writerow(['U'])            
         for i in range(adcp.n_ensembles):
-            arraywriter.writerow(adcp.velocity[i,:,0].tolist())
+            arraywriter.writerow(v[i,:,0].tolist())
         arraywriter.writerow(['V'])            
         for i in range(adcp.n_ensembles):
-            arraywriter.writerow(adcp.velocity[i,:,1].tolist())
+            arraywriter.writerow(v[i,:,1].tolist())
         arraywriter.writerow(['W'])            
         for i in range(adcp.n_ensembles):
-            arraywriter.writerow(adcp.velocity[i,:,2].tolist())
+            arraywriter.writerow(v[i,:,2].tolist())
+
+
+def write_csv_velocity_db(adcp,csv_filename,no_header=False,un_rotate_velocties=True):
+    """ 
+    Writes comma-delimited ensemble-mean U,V
+    Inputs:
+        ADCP = ADCPData object
+        csv_filename = file path of output file
+        no_header = boolean, True = don'r write position data, False = write position data
+    Returns:
+        nothing
+    """    
+    # direct dump of numpy array - opps required numpy v1.8
+    #np.savetext(csv_filename,adcp.velocity,delimiter=",")
+    if un_rotate_velocties:
+        v = adcp.get_unrotated_velocity()
+    else:
+        v = adcp.velocity
+    with open(csv_filename, 'wb') as csvfile:
+        arraywriter = csv.writer(csvfile, delimiter=',',
+                                 quoting=csv.QUOTE_MINIMAL)        
+        if not no_header:
+            if adcp.xy is not None:
+                header = ['x [%s]'%adcp.xy_srs,'y [%s]'%adcp.xy_srs]
+            elif adcp.lonlat is not None:
+                header = ['longitude [degE]','latitude [degN]']
+            else:
+                print 'Error, input adcp has no position data - no file written'
+                return
+            header.extend(['z [m]','datetime','u [m/s]','v [m/s]','w [m/s]',])                
+            arraywriter.writerow(header)
+        for i in range(adcp.n_ensembles):
+            for j in range(adcp.n_bins):
+                if adcp.mtime is None:
+                    rec_time = 'None'
+                elif adcp.mtime[i] is None or np.isnan(adcp.mtime[i]):
+                    rec_time = 'None'
+                else:
+                    rec_time = num2date(adcp.mtime[i]).strftime('%c')
+                if adcp.xy is not None:
+                    db_record = [adcp.xy[i,0],adcp.xy[i,1]]
+                else:
+                    db_record = [adcp.lonlat[i,0], adcp.lonlat[i,1]]
+                db_record = db_record + [adcp.bin_center_elevation[j],
+                                         rec_time,
+                                         v[i,j,0],
+                                         v[i,j,1],
+                                         v[i,j,2]]
+                arraywriter.writerow(db_record)
                 
+
+def write_ensemble_mean_velocity_db(adcp,csv_filename,no_header=False,
+                                    un_rotate_velocties=True,elev_line=None,
+                                    range_from_velocities=False):
+    """ 
+    Writes comma-delimited velocties to a text file, optionally with xy-positions
+    or lon-lat positions, and bin_center_elveations.  The write order for a 2D
+    velocity aray is the first (leftmost) axis is written horizontally.
+    Inputs:
+        ADCP = ADCPData object
+        csv_filename = file path of output file
+        no_header = boolean, True = don'r write position data, False = write position data
+    Returns:
+        nothing
+    """    
+    # direct dump of numpy array - opps required numpy v1.8
+    #np.savetext(csv_filename,adcp.velocity,delimiter=",")
+    if un_rotate_velocties and adcp.rotation_angle is not None:
+        r_axis = adcp.rotation_axes
+        r_angle = adcp.rotation_angle
+        adcp.set_rotation(None)
+        UVW = adcp.ensemble_mean_velocity(elev_line=elev_line,
+                                      range_from_velocities=range_from_velocities)
+        adcp.set_rotation(r_angle,r_axis)
+    else:
+        UVW = adcp.ensemble_mean_velocity(elev_line=elev_line,
+                                      range_from_velocities=range_from_velocities)
+    with open(csv_filename, 'wb') as csvfile:
+        arraywriter = csv.writer(csvfile, delimiter=',',
+                                 quoting=csv.QUOTE_MINIMAL)        
+        if not no_header:
+            if adcp.xy is not None:
+                header = ['x [%s]'%adcp.xy_srs,'y [%s]'%adcp.xy_srs]
+            elif adcp.lonlat is not None:
+                header = ['longitude [degE]','latitude [degN]']
+            else:
+                print 'Error, input adcp has no position data - no file written'
+                return
+            header.extend(['datetime','U [m/s]','V [m/s]'])                
+            arraywriter.writerow(header)
+        for i in range(adcp.n_ensembles):
+            if adcp.mtime is None:
+                rec_time = 'None'
+            elif adcp.mtime[i] is None or np.isnan(adcp.mtime[i]):
+                rec_time = 'None'
+            else:
+                rec_time = num2date(adcp.mtime[i]).strftime('%c')
+            if adcp.xy is not None:
+                db_record = [adcp.xy[i,0],adcp.xy[i,1]]
+            else:
+                db_record = [adcp.lonlat[i,0], adcp.lonlat[i,1]]
+                
+            db_record = db_record + [rec_time,
+                                     UVW[i,0],
+                                     UVW[i,1]]
+            arraywriter.writerow(db_record)
+
+
 
 #def split_repeat_survey_into_transects(adcp_survey):
 #    
@@ -471,12 +587,12 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
         rotation = one of:
           None - no rotation of averaged velocity profiles
          'normal' - rotation based upon the normal to the plotline (default rotation type)
-         'pricipal flow' - uses the 1st principal component of variability in UV flow direction
+         'pricipal flow' - uses the 1st principal component of variability in uv flow direction
          'Rozovski' - individual rotation of each verticle velocity to maximize U 
          'no transverse flow' - rotation by the net flow vector is used to minnumize V
         xy_line = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
     Returns
-        adcp_transect = ADCPTransectData object with rotated UV velocities
+        adcp_transect = ADCPTransectData object with rotated uv velocities
     """
     if rotation == "normal":
         # find angle of line:
@@ -499,12 +615,12 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
     else:
         theta = rotation
     
-    adcp_transect.set_rotation(theta,'UV')
+    adcp_transect.set_rotation(theta,'uv')
 
     return adcp_transect
 
 
-def find_UV_dispersion(adcp):
+def find_uv_dispersion(adcp):
     """
     Calculates dispersion coeffcients of velocties in adcp according to 
     Fischer et al. 1979

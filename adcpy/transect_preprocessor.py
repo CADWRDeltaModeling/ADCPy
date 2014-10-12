@@ -62,30 +62,28 @@ def transect_preprocessor(option_file=None):
         print "Could not load options file: %s"%option_file
         raise
 
-    path_or_file = working_directory
-    
-    if os.path.exists(path_or_file):
-        if (os.path.isdir(path_or_file)):
-            data_files = glob.glob(os.path.join(path_or_file,'*[rR].000'))
-            data_files += glob.glob(os.path.join(path_or_file,'*.nc'))
-            
-            data_path = path_or_file
+    if os.path.exists(working_directory):
+        if (os.path.isdir(working_directory)):
+            if file_list is not None:
+                data_files = []
+                for f in file_list:
+                    fileName, fileExtension = os.path.splitext(f)
+                    if (('R.000' in f and fileExtension == '.000') or
+                        ('r.000' in f and fileExtension == '.000')):
+                        data_files.append(os.path.join(working_directory,f))
+                    elif fileExtension == '.nc':
+                        data_files.append(os.path.join(working_directory,f))
+                    else:
+                        print "Filename '%s' does not appear to be a valid raw (*r.000) or netcdf (*.nc) file - skipping."%f
+            else:
+                data_files = glob.glob(os.path.join(working_directory,'*[rR].000'))
+                data_files += glob.glob(os.path.join(working_directory,'*.nc'))            
+            data_path = working_directory
         else:
-            try:
-                fileName, fileExtension = os.path.splitext(path_or_file)
-                if (('R.000' in path_or_file and fileExtension is '000') or
-                    ('r.000' in path_or_file and fileExtension is '000')):
-                    data_files = ( path_or_file, )
-                    data_files_nc = None;
-                elif fileExtension is '.nc':
-                    data_files_nc = ( path_or_file, )
-                else:
-                    print "Filename (%s) does not appear to be a valid raw (*r.000) or netcdf (*.nc) file - exiting."%path_or_file
-                data_path, fname = os.path.split(path_or_file)
-            except:
-                print "Could not interpret filename (%s) as a raw (*r.000) or netcdf (*.nc) file - exiting."%path_or_file        
+            print "Could not open working_directory '%s' - exiting."%working_directory
+            exit()
     else:
-        print "Path or file (%s) not found - exiting."%path_or_file
+        print "working_directory '%s' not found - exiting."%working_directory
         exit()
     
     outpath = os.path.join(data_path,'adcpy')
@@ -107,7 +105,7 @@ def transect_preprocessor(option_file=None):
             path, fname = os.path.split(data_file)
             
 #            try:
-            a = ADCPy.open_adcp(data_file,
+            a = adcpy.open_adcp(data_file,
                             file_type="ADCPRdiWorkhorseData",
                             num_av=1,
                             adcp_depth=adcp_depth)
@@ -129,8 +127,7 @@ def transect_preprocessor(option_file=None):
                 bt_vel_a = np.row_stack((bt_vel_a,bt1))
                 xy_a = np.row_stack((xy_a,xy1))
                     
-            print '+',fname #, 'Heading Group A:', is_a[-1]
-            print fmt_dnum(a.mtime[0])
+            print '+',fname,fmt_dnum(a.mtime[0])
             
             
             if debug_stop_after_n_transects:
@@ -146,7 +143,7 @@ def transect_preprocessor(option_file=None):
 
         # this method is independent of self/a
         #try: 
-        heading_correction_a = ADCPy.util.fit_head_correct(mtime_in=mtime_a,
+        heading_correction_a = adcpy.util.fit_head_correct(mtime_in=mtime_a,
                                    hdg_in=heading_a,
                                    bt_vel_in=bt_vel_a,
                                    xy_in=xy_a,

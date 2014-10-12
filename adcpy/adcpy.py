@@ -36,17 +36,25 @@ adcpdata_subclass_names = [ 'ADCPRdiWorkhorseData',  # RDI Workhorse / WinRiver 
                             #'ADCPMooredData',        # General sub-class of ADCPData with moored-specific functionality
 
 def open_adcp(file_path,file_type=None,**kwargs):
-    """ 
+    """ Open an ADCP file and return an ADCPData instance.
     Attempts to determine the type of a passed ADCP data file, and 
     will pass the file type to the appropriate subclass for reading, 
     and will return an populated AdcpData structure if possible.  Optionally
     the file type (and subclass reading) can be forced by assigning one
     of the known subclass names as a string.
-    Inputs:
-        file_path = path and filename of ADCPy-supported file to open [str]
-        file_type = either 'raw_file' or 'nc_file' [str], optional to help in deciding how to open file
-        ** additional keyword=argument pairs that will be passed to the appropriate open call
-    Returns:
+    
+    Parameters
+    ----------
+    
+        file_path : str 
+        path and filename of ADCPy-supported file to open [str]
+        
+        file_type : str either 'raw_file' or 'nc_file' [str], optional to help in deciding how to open file
+        
+        **kwargs additional keyword=argument pairs that will be passed to the appropriate open call
+    
+    Returns
+    -------
         ADCPData class object (or sub-class)
     """
     file_name,ext = os.path.splitext(file_path)
@@ -200,6 +208,19 @@ class ADCPData(object):
         from datetime import datetime
         dtn = datetime.now()
         self.history = self.history + dtn.strftime('%Y-%m-%d %H:%M:%S ') + string + '; '
+
+    def date_time_str(self,filter_missing=False):
+        """ 
+        Returns a list of date and time strings or ensembles.  .
+        Inputs:
+            filter_missing = Strips np.nan and None if True [boolean]
+        """    
+        from matplotlib.dates import num2date
+        dts = [num2date(self.mtime[i]).strftime('%c') for i in range(np.size(self.mtime))] 
+        if filter_missing:
+            dts = filter(None,dts)
+            dts = filter(np.nan,dts)
+        return dts
 
     def get_subclass_name(self):
         """ 
@@ -581,7 +602,7 @@ class ADCPData(object):
         else:
             print "Unkown axis '%s' passed to sd_drop; vaid options are 'elevation' and 'ensemble'"%sd_axis
             raise ValueError
-        # drop U/V velocity values, using total UV magnitude
+        # drop U/V velocity values, using total uv magnitude
         drop = util.find_sd_greater(v_mag,elev,sd,axis=axis)          
         for i in range(3):
             if i == 2:
@@ -599,7 +620,7 @@ class ADCPData(object):
                                                                                              warning_fraction))
 
 
-    def rotate_UV_velocities(self,radian):
+    def rotate_uv_velocities(self,radian):
         """
         Re-orients U and V velocities to an arbitrary rotation, without self
         assignment.
@@ -614,7 +635,7 @@ class ADCPData(object):
                                   
 
 
-    def set_rotation(self,radian,axes_string='UV'):
+    def set_rotation(self,radian,axes_string='uv'):
         """
         Re-orient designated velocities to an arbitrary rotation.
             Python list of 2 velocity numpy arrays.
@@ -641,7 +662,7 @@ class ADCPData(object):
         if radian is None:
             self.rotation_angle = None
             self.rotation_axes = None
-            self.history_append('rotate_velocities(None)')
+            self.history_append('set_rotation(None)')
         else:                          
             (self.velocity[:,:,ax[0]], 
              self.velocity[:,:,ax[1]]) = self.rotate_velocities(radian,
@@ -653,7 +674,7 @@ class ADCPData(object):
             else:
                 radian_str = '%f'%radian
             self.rotation_axes = axes_string
-            self.history_append('rotate_velocities(radian=%s,axes=%s)'%(radian_str,axes_string))        
+            self.history_append('set_rotation(radian=%s,axes=%s)'%(radian_str,axes_string))        
         
 
     def get_unrotated_velocity(self):
@@ -985,8 +1006,14 @@ class ADCPTransectData(ADCPData):
             (self.bt_velocity[:,0], 
             self.bt_velocity[:,1]) = self.rotate_bt_velocities(delta*np.pi/180.0)
         self.heading = self.heading + delta
-        head_str = "heading_correct(hdg_bin_size=%f,"%hdg_bin_size + \
-                   "hdg_bin_min_samples=%i)"%hdg_bin_min_samples
+        if cf is not None:
+            print 'cf', cf
+            head_str = "heading_correct(cf=[%f,%f,%f])"%(cf[0],cf[1],cf[2])
+        else:
+            head_str = "heading_correct(hdg_bin_size=%s,"%str(hdg_bin_size) + \
+                       "hdg_bin_min_samples=%s)"%str(hdg_bin_min_samples) + \
+                       "u_min_bt=%s)"%str(u_min_bt) + \
+                       "mag_dec=%s)"%str(mag_dec)
         self.history_append(head_str)
 
 
@@ -1007,9 +1034,8 @@ class ADCPTransectData(ADCPData):
         else:
             return (0.0,0.0)        
 
-    def set_rotation(self,radian,axes_string='UV'):
-        """
-        Re-orient designated velocities to an arbitrary rotation.
+    def set_rotation(self,radian,axes_string='uv'):
+        """ Re-orient designated velocities to an arbitrary rotation.
             Python list of 2 velocity numpy arrays.
         Inputs:
             radian = rotation in radians
@@ -1019,8 +1045,8 @@ class ADCPTransectData(ADCPData):
               direction
         """
         old_rotation = self.rotation_angle
-        super(ADCPTransectData,self).set_totation(radian)
-        if axes_string != 'UV':
+        super(ADCPTransectData,self).set_rotation(radian)
+        if axes_string != 'uv':
             print "WARNING: bottom track velocity rotation not supported for axes: ",axes_string
         elif self.bt_velocity is not None:
             if old_rotation is not None:
@@ -1121,7 +1147,6 @@ class ADCPTransectData(ADCPData):
             
         # regrid xy-based transect variables
         if np.size(self.adcp_depth) > 1:
-            print 'adcp_depth',self.adcp_depth
             self.adcp_depth = util.xy_regrid(adcp_depth_interp,xy,xy_new,
                                            pre_calcs=pre_calcs,kind=kind)
         if self.bt_depth is not None:            

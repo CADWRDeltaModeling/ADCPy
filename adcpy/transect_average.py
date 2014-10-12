@@ -29,6 +29,8 @@ avg_dz                         = 0.25         # Vertical resolution of averaging
 avg_max_gap_m                  = 30.0         # Maximum distance allowed between ADCP observations when averaging {m}
 avg_max_gap_minutes            = 20.0         # Maximum time allowed between ADCP observations when averaging {m}
 avg_max_group_size             = 6            # Maximum number of ADCP observations to average {m}
+avg_bin_sd_drop                = 3            # Maximum number of ADCP observations to average {m}
+avg_normal_to_flow             = False
 
 # post-average options
 avg_rotation                   = 'Rozovski'   # One of ['Rozovski','no transverse flow','principal flow','normal',None]
@@ -45,6 +47,7 @@ avg_plot_uvw_velocity_array    = True         # Generate a 3-panel image plot sh
 avg_plot_flow_summmary         = True         # Generate a summary plot showing image plots of U,V bin-averaged velocities, an arrow plot of bin-averaged U-V mean velocities, and flow/discharge calculations
 avg_save_plots                 = True         # Save the plots to disk 
 avg_show_plots                 = False        # Print plots to screen (pauses execution until plots are manually closed)
+
 
 ## END script options #########################################################
 
@@ -86,8 +89,12 @@ def transect_average(pre_process_input_file=None):
         if avg_plot_xy:
             adcpy.plot.plot_obs_group_xy_lines(grp,fig=track_fig,title='Group%03i Source Observations'%grp_num)
 
-        avg = average_transects(grp,dxy=avg_dxy,dz=avg_dz,return_adcpy=True,
-                                plotline_from_flow=True)
+        avg = average_transects(grp,
+                                dxy=avg_dxy,
+                                dz=avg_dz,
+                                return_adcpy=True,
+                                plotline_from_flow=avg_normal_to_flow,
+                                sd_drop=avg_bin_sd_drop)
 
         if avg_plot_xy:
             adcpy.plot.get_fig(fig=track_fig)
@@ -109,7 +116,11 @@ def transect_average(pre_process_input_file=None):
             avg.kernel_smooth(kernel_size = 3)
         
         if avg_save_csv:
-            write_csv_velocity(avg,os.path.join(outpath,'group%03i_velocity.csv'%grp_num),no_header=True)
+            write_csv_velocity_array(avg,os.path.join(outpath,'group%03i_velocity.csv'%grp_num),no_header=True)
+            write_csv_velocity_db(avg,os.path.join(outpath,'group%03i_velocity_db.csv'%grp_num),no_header=False)
+            write_ensemble_mean_velocity_db(avg,os.path.join(outpath,'group%03i_velocity_depth_means.csv'%grp_num),
+                                            no_header=False,range_from_velocities=True)
+
         if avg_save_netcdf:
             fname = os.path.join(outpath,'group%03i.nc'%grp_num)
             avg.write_nc(fname,zlib=True)
@@ -128,7 +139,7 @@ def transect_average(pre_process_input_file=None):
 
         if avg_plot_secondary_circulation:
             fig4 = adcpy.plot.plot_secondary_circulation(avg,u_vecs=30,v_vecs=30,
-                                                         title='Group%03i Streamwise Velocity [m/s] and Cross-stream Vectors'%grp_num)
+                                                         title='Group%03i Cross-Stream Velocity [m/s] and Secondary Circulation Vectors'%grp_num)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_secondary_circulation.png"%grp_num))
 
@@ -220,9 +231,9 @@ def plot_avg_n_sd(avg,uvw,resolution=0.1):
 
 
 def main():
-    #prepro_input = sys.argv[1]
-    transect_average(r'trn_pre_input_GEO20090106.py')
-    #transect_average()
+    import sys
+    prepro_input = sys.argv[1]
+    transect_average(prepro_input)
     
 
 # run myself
