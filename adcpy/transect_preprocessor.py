@@ -205,10 +205,6 @@ def transect_preprocessor(option_file=None):
             a.sd_drop(sd=std_drop,
                       sd_axis='ensemble',
                       interp_holes=True)
-        if smooth_kernel > 2:
-            a.kernel_smooth(kernel_size = smooth_kernel)
-        if extrap_boundaries:
-            a.extrapolate_boundaries()
         if average_ens > 1:
             a = a.average_ensembles(ens_to_avg=average_ens)
         if regrid_horiz_m is not None:
@@ -217,6 +213,10 @@ def transect_preprocessor(option_file=None):
                         xy_srs=xy_projection,
                         pline=None,
                         sort=False)
+        if smooth_kernel > 2:
+            a.kernel_smooth(kernel_size = smooth_kernel)
+        if extrap_boundaries:
+            a.extrapolate_boundaries()
 
         if (save_preprocessed_data_to_netcdf):
             fname = outname + '.preprocessed.nc'

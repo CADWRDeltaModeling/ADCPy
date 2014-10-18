@@ -1821,8 +1821,8 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
         depths = 1D nparray of shape [ne] descibing the max valid elevation - must be positive and increasing
         mtime = 1D numpy array, shape [ne], with matplotlib datenums of ensemble measurement times
     Output:
-        Ums = Ensemble flow, 1D numpy array, shape [ne] {m^3/s}
-        U = Total cross-sectional flow {m^3/s}
+        U = Mean cross-sectional velocity  {m/s}
+        Uflow = Total cross-sectional flow {m^3/s}
         total_survey_area = ensemble-to-ensemble 2D survey area {m^2}
         total_cross_sectional_area = total valid survey area in U-direction {m^2}
     """      
@@ -1857,10 +1857,10 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
     total_cross_sectional_area = \
     np.abs(np.nansum(np.nansum(cross_sectional_area)))
     
-    U = np.nansum(np.nansum(flow))
-    Ums = U/total_cross_sectional_area
+    Uflow = np.nansum(np.nansum(flow))
+    U = Uflow/total_cross_sectional_area
 
-    return (Ums, U, total_survey_area, total_cross_sectional_area)
+    return (U, Uflow, total_survey_area, total_cross_sectional_area)
 
 
 def unweight_xy_positions(xy,tollerance=5.0):
@@ -2050,7 +2050,7 @@ def find_projection_distances(xy,pline=None):
         dd = distance along fitted line, in the direction of the fit line
     """
     if pline is None:
-        #print 'No plot line specified - performing linear fit of projected data.'
+        print 'Warning - generation of fit inside find_projection_distances() is deprecated.'
         xy_line = map_xy_to_line(xy)
     else:
         xy_line = pline
@@ -2315,7 +2315,8 @@ def find_regular_bin_edges_from_centers(centers):
     return edges
 
 
-def xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='bin average'):
+def xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
+              kind='bin average',sd_drop=0):
     """
     Re-grids the values in the 1D or 2D nparray onto a new grid defined by xy_new
     (and z_new, if 2D).  Accepts a bunch of stuff as pre_calcs so to save computation
@@ -2328,6 +2329,8 @@ def xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='bin avera
         z_new = z positions of new grid, 1D array of shape [nb2]
         pre_calcs = python list of different intermediate things, specifically the
           returns of prep_xy_regrid()
+        sd_drop = number of standard deviations above which data in a bin is dropped from
+          averaging; 0 = no dropping; only used if kind = "bin average"
         kind = string, either 'bin average' or one ofthe kinds of interpolatation
           known by scipy.interpolate
     Returns:
@@ -2335,12 +2338,14 @@ def xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='bin avera
     """   
     if kind == 'bin average':
         # this fuction optionally returns a tuple, we only want 1st element which is means
-        return  xy_bin_average(nparray,xy,xy_new,z,z_new,pre_calcs,return_stats=False)[0]
+        return  xy_bin_average(nparray,xy,xy_new,z,z_new,pre_calcs,
+                               return_stats=False,sd_drop=sd_drop)[0]
     else:
         return xy_interpolate(nparray,xy,xy_new,z,z_new,pre_calcs,kind)
 
 
-def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='bin average'):
+def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
+                       kind='bin average',sd_drop=0):
     """
     Iterates of 3D arrays, calling xy_regrid() on each 2D slice [:,:,n]
     Inputs:
@@ -2353,6 +2358,8 @@ def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='
           returns of prep_xy_regrid()
         kind = string, either 'bin average' or 'interpolate' to determine how
           the regridding is accomplished
+        sd_drop = number of standard deviations above which data in a bin is dropped from
+          averaging; 0 = no dropping; only used if kind = "bin average"
     Returns:
         nparray values regridded to shape [ne2],1D or [ne2,nb2],2D
     """
@@ -2368,7 +2375,7 @@ def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='
     gridded_array = np.zeros(new_dims,np.float64)
     for i in range(dims[-1]):
         gridded_array[...,i] = xy_regrid(nparray[...,i],xy,xy_new,
-                                         z,z_new,pre_calcs,kind)
+                                         z,z_new,pre_calcs,kind,sd_drop)
     return gridded_array
 
 
@@ -2452,23 +2459,24 @@ def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=
     else:
         return (bin_mean,)
 
-    if sd_drop:
+    if sd_drop > 0:
         # drop outliers from data
         for n in range(np.size(xy)):
             i = xy_bin_num[n]-1
             if z_not_none:
                 j = z_bin_num[n]-1
                 if i > 0 and j > 0:
-                    if values[n] > sd_drop*bin_sd[i,j]:
+                    if np.abs(bin_mean[i,j]-values[n]) > sd_drop*bin_sd[i,j]:
                         xy[n],z[n],values[n] = (np.nan,np.nan,np.nan)
             elif i > 0:
                 if values[n] > sd_drop*bin_sd[i]:
-                    xy[n],values[n] = np.nan
+                    xy[n],values[n] = (np.nan,np.nan)
         
         # reshape data to remove nan values
         nnan = ~np.isnan(values)
         xy = xy[nnan]
-        z = z[nnan]
+        if z_not_none:
+            z = z[nnan]
         values = values[nnan]
  
         bin_mean, bin_n = calc_bin_mean_n(xy,xy_bins,values,z,z_bins)
@@ -2521,6 +2529,12 @@ def calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n):
                 sq_sums[i,j] += (values[n] - bin_mean[i,j])**2
         elif i > 0:
             sq_sums[i] += (values[n] - bin_mean[i])**2
+
+#    for n in range(np.size(xy)):
+#        if z_not_none:
+#            j = z_bin_num[n]-1
+#            print 'sum_sq bin_n mean sd',sq_sums[i,j],bin_n[i,j],bin_mean[i,j],np.sqrt(sq_sums[i,j]/bin_n[i,j])
+
     return (np.sqrt(sq_sums/bin_n),xy_bin_num,z_bin_num)
 
 
@@ -2570,7 +2584,8 @@ def prep_xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None):
     return (is_array,xy_range,zmesh,xymesh,xy_new_range,zmesh_new,xymesh_new)
 
 
-def xy_bin_average(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,return_stats=False):
+def xy_bin_average(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
+                   return_stats=False,sd_drop=0):
     """
     Bin-averages the values in the 1D or 2D nparray onto a new grid defined by xy_new
     (and z_new, if 2D).  Accepts a bunch of stuff as pre_calcs so to save computation
@@ -2605,7 +2620,8 @@ def xy_bin_average(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,return_sta
         xy_tiled = xy_range[nnan]
         valid_data = nparray[nnan]
 
-    avg = bin_average(xy_tiled,xy_bins,valid_data,z_tiled,z_bins,return_stats=False)    
+    avg = bin_average(xy_tiled,xy_bins,valid_data,z_tiled,z_bins,
+                      return_stats=False,sd_drop=sd_drop)    
     return un_flip_bin_average(xy_new_range,z_new,avg)
 
 

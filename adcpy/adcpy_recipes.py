@@ -113,7 +113,6 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         mtimes = np.array(filter(None,mtimes))
         if mtimes.any():
             avg.mtime = np.ones(new_shape[0],np.float64) * sp.nanmean(mtimes)
-            avg.mtime.any()
         if plotline is not None:
             plotlinestr = "[%f,%f],[%f,%f]"%(plotline[0,0],
                                              plotline[0,1],

@@ -36,7 +36,7 @@ avg_normal_to_flow             = False
 avg_rotation                   = 'Rozovski'   # One of ['Rozovski','no transverse flow','principal flow','normal',None]
 avg_std_drop                   = 3.0          # Standard deviation of velocity, above which samples are dropped from analysis {0.0=no dropping, 2.0-3.0 typically [number of standard deviations]}
 avg_std_interp                 = True         # Perform interpolation of holes in velocity profiles left by high standard deviation removal {typically True with std_drop > 0.0}
-avg_smooth_kernel              = 5            # Smooth velocity data using a square kernel box-filter, with side dimension = avg_smooth_kernel.  0 = no kernel smoothing
+avg_smooth_kernel              = 3            # Smooth velocity data using a square kernel box-filter, with side dimension = avg_smooth_kernel.  0 = no kernel smoothing
 avg_save_netcdf                = True         # Save bin-averaged velocities as an ADCPData netcdf file
 avg_save_csv                   = True         # Save bin-averaged velocities as a CSV text file
 avg_plot_xy                    = True         # Generate a composite plot of survey location(s) of original ADCP ensembles
@@ -151,7 +151,7 @@ def transect_average(pre_process_input_file=None):
                 plt.savefig(os.path.join(outpath,"group%03i_uvw_velocity.png"%grp_num))
 
         if avg_plot_flow_summmary:
-            fig6 = adcpy.plot.plot_flow_summmary(avg,title='Group%03i Streawise Summary'%grp_num,
+            fig6 = adcpy.plot.plot_flow_summmary(avg,title='Group%03i Streamwise Summary'%grp_num,
                                                  ures=0.1,vres=0.1,use_grid_flows=True)
             if avg_save_plots:
                 plt.savefig(os.path.join(outpath,"group%03i_flow_summary.png"%grp_num))
@@ -238,5 +238,7 @@ def main():
 
 # run myself
 if __name__ == "__main__":
+
+    #transect_average('trn_pre_input_GEO20090106.py')
     main()
 

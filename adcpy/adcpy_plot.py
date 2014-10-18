@@ -246,11 +246,15 @@ class QPanel(object):
         if self.equal_axes:
             ax.set_aspect('equal')
         if self.xpand is not None:
-            xpand = 0.33
+            xpand = self.xpand
             xspan = np.max(self.x) - np.min(self.x)
+            yspan = np.max(self.y) - np.min(self.y)
+
+            xspan = max(xspan,yspan)
+            yspan = xspan            
+            
             x1 = np.min(self.x) - xpand*xspan; x2 = np.max(self.x) + xpand*xspan          
             plt.xlim([x1, x2])
-            yspan = np.max(self.y) - np.min(self.y) 
             y1 = np.min(self.y) - xpand*yspan; y2 = np.max(self.y) + xpand*yspan          
             plt.ylim([y1, y2])           
         qk = plt.quiverkey(Q, 0.5, 0.08, qk_value, 
@@ -270,7 +274,7 @@ class QPanel(object):
             plt.xlabel(self.xlabel)
         if self.ylabel is not None:
             plt.ylabel(self.ylabel)
-        plt.autoscale(True)
+        #plt.autoscale(True)
             
 
 
@@ -503,7 +507,7 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
         vectors.y = adcp.xy[:,1]
         vectors.xlabel = 'm'
         vectors.ylabel = 'm'
-        vectors.equal_axes = True       
+        vectors.equal_axes = True
     elif adcp.lonlat is not None:
         vectors.x = adcp.lonlat[:,0]
         vectors.y = adcp.lonlat[:,1]
@@ -575,6 +579,9 @@ def plot_xy_line(adcp,fig=None,title=None,label=None,use_stars_at_xy_locations=T
         plt.plot(x,y,label=label)
     if title is not None:
         plt.title(title,y=1.06)
+    formatter = matplotlib.ticker.ScalarFormatter(useOffset=False)
+    plt.gca().yaxis.set_major_formatter(formatter)
+    plt.gca().xaxis.set_major_formatter(formatter)
     return fig
     
 

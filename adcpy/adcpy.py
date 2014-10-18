@@ -218,8 +218,12 @@ class ADCPData(object):
         from matplotlib.dates import num2date
         dts = [num2date(self.mtime[i]).strftime('%c') for i in range(np.size(self.mtime))] 
         if filter_missing:
+            mtime = self.mtime[~np.isnan(self.mtime)]
+        else:
+            mtime = self.mtime
+        dts = [num2date(mtime[i]).strftime('%c') for i in range(np.size(mtime))] 
+        if filter_missing:
             dts = filter(None,dts)
-            dts = filter(np.nan,dts)
         return dts
 
     def get_subclass_name(self):
@@ -799,7 +803,8 @@ class ADCPData(object):
             mask[mask==0] = np.nan  # set to nan for data elimination - important b/c zeros are valid data            
         return (my_elev_line,mask)
 
-    def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,kind='bin average'):
+    def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,
+                  kind='bin average',sd_drop=0,mtime_regrid=False):
         """ 
         Projects ensemble locations to a strain line in the xy-plane, and
         then regrids velocities onto a regular grid defined by dxy and dz.
@@ -814,8 +819,10 @@ class ADCPData(object):
             pline = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
             sort = if True, pre-sort the data being regrided in terms of location
                on the projection line
-             kind = one of ['bin_average', linear','cubic','nearest'], where 
+            kind = one of ['bin_average', linear','cubic','nearest'], where 
                the later three are types of numpy interpolation
+            sd_drop = number of standard deviations above which data in a bin is dropped from
+              averaging; 0 = no dropping; only used if kind = "bin average"
         Returns:
             xy = x-y locations , 2D array of shape [ne,2], where [:,0] is x and [:,1] is y
             xy_new = new grid x-y locations, 2D array of shape [ne2,2], where [:,0] is x and [:,1] is y
@@ -828,7 +835,7 @@ class ADCPData(object):
         # switch to new projection if required
         if (xy_srs is not None and self.xy_srs != xy_srs) or self.xy is None:
             self.lonlat_to_xy(xy_srs)
-        # find new retangular grid sides and xy locations
+        # find new retangular grid sides and xy locations      
         (xy_range,xy_new_range,xy_new,z_new) = util.new_xy_grid(self.xy,
                                                               self.bin_center_elevation,
                                                               dxy,dz,
@@ -850,14 +857,19 @@ class ADCPData(object):
         # regrid and mask all xy-based vars
         self.velocity = util.xy_regrid_multiple(v_interp,self.xy,xy_new,
                                              self.bin_center_elevation,
-                                             z_new,pre_calcs,kind)
+                                             z_new,pre_calcs,kind,sd_drop)
         # mtime is special - we can't regrid if sorted 
         # removed loop times to get min transect cross time
-        nn = util.find_xy_transect_loops(self.xy,xy_range=xy_range)
-        pre_calcs_mtime = (xy_range[nn],None,None,xy_new_range,None,None,)
-        self.mtime = util.xy_regrid(self.mtime[nn],self.xy[nn,...],xy_new,
-                               pre_calcs=pre_calcs_mtime,kind=kind)
-        self.mtime = util.interp_nans_1d(self.mtime)
+        if self.mtime is not None:
+            if mtime_regrid:
+                nn = util.find_xy_transect_loops(self.xy,xy_range=xy_range)
+                pre_calcs_mtime = (xy_range[nn],None,None,xy_new_range,None,None,)
+                self.mtime = util.xy_regrid(self.mtime[nn],self.xy[nn,...],xy_new,
+                                       pre_calcs=pre_calcs_mtime,kind=kind,sd_drop=0)
+                self.mtime = util.interp_nans_1d(self.mtime)
+            else:
+                self.mtime = np.ones(np.shape(xy_new_range),np.float64) * \
+                             sp.nanmedian(self.mtime)
 
         # update dependent variables
         xy = np.copy(self.xy)
@@ -1098,7 +1110,8 @@ class ADCPTransectData(ADCPData):
                                          self.mtime)
 
 
-    def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,kind='bin average'):
+    def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,kind='bin average',
+                  sd_drop=0,mtime_regrid=False,sd_drop_alt=0):
         """ 
         Projects ensemble locations to a strain line in the xy-plane, and
         then regrids velocities onto a regular grid defined by dxy and dz.
@@ -1115,6 +1128,9 @@ class ADCPTransectData(ADCPData):
                on the projection line
              kind = one of ['bin_average', linear','cubic','nearest'], where 
                the later three are types of numpy interpolation
+            sd_drop = number of standard deviations above which data in a bin is dropped from
+              averaging; 0 = no dropping; only used if kind = "bin average"
+            sd_drop = same as sd_drop, but applied to gridded variables other than velocity
         Returns:
             xy = x-y locations , 2D array of shape [ne,2], where [:,0] is x and [:,1] is y
             xy_new = new grid x-y locations, 2D array of shape [ne2,2], where [:,0] is x and [:,1] is y
@@ -1127,7 +1143,8 @@ class ADCPTransectData(ADCPData):
         # call base method to start regridding of base data, and get 
         # new grid info    
         (xy, xy_new, z, z_new, nn, pre_calcs) = \
-        super(ADCPTransectData,self).xy_regrid(dxy,dz,xy_srs,pline,sort,kind)
+        super(ADCPTransectData,self).xy_regrid(dxy,dz,xy_srs,pline,sort,
+                                               kind,sd_drop)
     
         # pre-sort data if needed, for speed
         if sort:
@@ -1151,7 +1168,8 @@ class ADCPTransectData(ADCPData):
                                            pre_calcs=pre_calcs,kind=kind)
         if self.bt_depth is not None:            
             self.bt_depth = util.xy_regrid(bt_depth_interp,xy,xy_new,
-                                           pre_calcs=pre_calcs,kind=kind)
+                                           pre_calcs=pre_calcs,kind=kind,
+                                           sd_drop=sd_drop_alt)
 
             self.bt_depth = np.array([self.bt_depth])
             mask = util.find_mask_from_vector(self.bin_center_elevation,
@@ -1160,11 +1178,14 @@ class ADCPTransectData(ADCPData):
             for i in range(3):
                 self.velocity[:,:,i][mask] = np.nan
         if self.heading is not None:
+            # does not make sense to sd_drop heading.  Doens't really make sense
+            # to xy_regrid heading either ... should this var be dropped during regrid?
             self.heading = util.xy_regrid(heading_interp,xy,xy_new,
                                            pre_calcs=pre_calcs,kind=kind)
         if self.bt_velocity is not None:
             self.bt_velocity = util.xy_regrid_multiple(bt_velocity_interp,xy,xy_new,
-                                           pre_calcs=pre_calcs,kind=kind)
+                                           pre_calcs=pre_calcs,kind=kind,
+                                           sd_drop=sd_drop_alt)
                            
  
 class ADCPMooredData(ADCPData):
