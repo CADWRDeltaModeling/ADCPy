@@ -586,7 +586,7 @@ def plot_xy_line(adcp,fig=None,title=None,label=None,use_stars_at_xy_locations=T
     
 
 def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wres=None,
-                            equal_res_about_zero=True,return_panels=False):
+                            equal_res_about_zero=True,return_panels=False,equal_axes=False):
     """
     Produces a quick plot of the adcp ensemble x-y locations, from an ADCPData
     object.
@@ -609,6 +609,7 @@ def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wre
         if np.size(adcp.mtime) == adcp.n_ensembles:
             dt = adcp.mtime
     ax = adcpy.util.get_axis_num_from_str(uvw)
+
     
     for i in ax:
         if i == ax[0] and title is not None:
