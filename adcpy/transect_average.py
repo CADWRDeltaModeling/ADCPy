@@ -239,6 +239,6 @@ def main():
 # run myself
 if __name__ == "__main__":
 
-    #transect_average('trn_pre_input_GEO20090106.py')
-    main()
+    transect_average('trn_pre_input_GEO20090106.py')
+    #main()
 

@@ -1646,6 +1646,69 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
     return new_array
 
 
+def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
+    """
+    Appends array ar2 to ar1 along the matching dimension given in shapes. If
+    either of the arrays are singular or None, the returned array will be 
+    filled with the single value, or NaNs according to the given shape.
+    Inputs:
+        ar1 = numpy array
+        ar1_shape = desired shape of ar1 value(s)
+        ar2 = numpy arry to append to ar1
+        ar2_shape = desired shape of ar1 value(s)
+    Output:
+        numpy array or shape ar1+ar2
+    """
+    a1 = check_if_array_and_expand(ar1,ar1_shape)
+    a2 = check_if_array_and_expand(ar2,ar2_shape)
+    s1 = np.shape(a1)
+    s2 = np.shape(a2)
+    if len(s1) != len(s2):
+        print "append_array_w_fill: input array must have the same number of dimensions"
+        raise ValueError
+    axis = None
+    for i in range(len(s1)):       
+        if s1[i] != s2[i]:
+            axis = i
+            break
+    if axis is not None:
+        #print 'a1 shape:',np.shape(a1)
+        #print 'a2 shape:',np.shape(a2)
+        return np.concatenate((a1,a2),axis=axis)
+    else:
+        print "append_array_w_fill: no matching dimensions found for concatenation"
+        raise ValueError
+        
+    
+
+def check_if_array_and_expand(pa,out_shape):
+    """
+    Checks an input value 'pa' (potential array) to be sure it is of shape 
+    "out_shape."  If it is not, throw error.  If pa is a scalar, attempt
+    to return an array of shape out_shape of the type and value of pa.  If pa
+    is None, returns an array of NaNs in out_shape.
+    Inputs:
+        pa = numpy array, scalar, or None
+        out_shape = desired shape of output array
+    Output:
+        numpy array in shape of out_shape and value of pa
+    """
+    pa_shape = np.shape(pa)
+    pa_type = type(pa).__name__
+    if pa_type == "ndarray":
+        if out_shape == pa_shape:
+            return pa
+        else:
+            print 'pa: ',pa
+            print 'out_shape: ',out_shape
+            print "check_if_array_and_expand: out_shape incompatible with pa"
+            raise ValueError
+    elif pa_type == "NoneType":
+        return np.zeros(out_shape,np.float64)*np.nan
+    else:
+        return np.ones(out_shape,pa_type)*pa
+
+
 def kernel_smooth(kernel_size,nparray):
     """
     Uses a nan-safe boxcar/uniform filter to smooth the data.  
@@ -1867,7 +1930,11 @@ def unweight_xy_positions(xy,tollerance=5.0):
     """
     Sometimes you want to reduce the number of points on a line segment, for 
     instance if you want to calculate a geometric centroid, but the somehow 
-    there was lot of loitering in one place.
+    there was lot of loitering in one place in xy space. 
+    Inputs:
+        xy = 2D numpy array, projected x/y positions, shape [n,2]
+    Returns:
+        2D numpy array, projected x/y positions with reduced n in 1st dimension
     """      
     
     n_xy, two = np.shape(xy)
@@ -2365,13 +2432,19 @@ def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
     """
     
     dims = np.shape(nparray)
+    
+    if len(np.shape(xy_new)) > 1:   
+        new_dim_xy = np.size(xy_new[:,0])
+    else:
+        new_dim_xy = np.size(xy_new)
+    
     if len(dims) == 1:
         print 'xy_regrid_multiple: nparray must be 2D or 3D'
         raise ValueError
     if len(dims) == 2:
-        new_dims = (np.size(xy_new[:,0]),dims[-1])
+        new_dims = (new_dim_xy,dims[-1])
     else:
-        new_dims = (np.size(xy_new[:,0]),np.size(z_new),dims[-1])
+        new_dims = (new_dim_xy,np.size(z_new),dims[-1])
     gridded_array = np.zeros(new_dims,np.float64)
     for i in range(dims[-1]):
         gridded_array[...,i] = xy_regrid(nparray[...,i],xy,xy_new,
@@ -2427,6 +2500,30 @@ def un_flip_bin_average(xy_range,z,avg):
         flipped.append(a)
     return flipped
 
+
+def new_t_grid(t,z,dt,dz):
+    """
+    Generates a regular grid with spacing set by dt and dz.
+    Inputs:
+        t = times , 1D array of shape [ne]
+        z = z position vector of current grid, shape [nb]
+        dt = new grid time in matplotlib datenum units
+        dz = new grid z resolution in z units
+    Returns:
+        t_new = times positions of new grid shape, 1D numpy array
+        z_new = z positions of new grid, 1D numpy array
+    """
+
+    t_new = np.arange(np.min(t),np.max(t),dt)
+    # reverse dz if necessary
+    z_is_negative = np.less(sp.nanmean(z),0)
+    if z_is_negative == (dz < 0):
+        my_dz = dz
+    else:
+        my_dz = -dz
+    z_new = np.arange(z[0],z[-1],my_dz)
+    return (t_new,z_new)
+    
 def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=0):
     """
     Bins  input values in the 1D or 2D nparray 'values' into the bins with

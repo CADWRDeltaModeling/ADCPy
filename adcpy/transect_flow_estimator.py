@@ -24,11 +24,11 @@ Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 ## START script options #######################################################
 
 # processing paramterters
-flow_regrid                     = False         
-flow_regrid_dxy                 = 25.0          # Horizontal resolution of averaging bins {m}
+flow_regrid                     = True         
+#flow_regrid_dxy                 = 25.0          # Horizontal resolution of averaging bins {m}
+flow_regrid_dxy                 = 2.0          # Horizontal resolution of averaging bins {m}
 flow_regrid_dz                  = 0.25         # Vertical resolution of averaging bins {m}
 flow_regrid_bin_sd_drop         = 3          # Maximum number of ADCP observations to average {m}
-flow_regrid_normal_to_flow      = False
 flow_regrid_normal_to_flow      = False
 flow_crossprod_ens_num_ave      = 15
 flow_sd_drop                    = 3            # Maximum number of ADCP observations to average {m}
@@ -36,6 +36,8 @@ flow_sd_drop_interp             = True            # Maximum number of ADCP obser
 flow_smooth_kernel              = 3            # Smooth velocity data using a square kernel box-filter, with side dimension = avg_smooth_kernel.  0 = no kernel smoothing
 flow_extrapolate_boundaries     = True            # Maximum number of ADCP observations to average {m}
 flow_rotation                   = "no transverse flow"           
+#flow_p1_lon_lat                  = (-121.6943,38.0527)
+#flow_p2_lon_lat                  = (-121.6900,38.0505)
 flow_p1_lon_lat                  = None
 flow_p2_lon_lat                  = None
 # post-average options
@@ -138,7 +140,7 @@ def transect_flow_estimator(pre_process_input_file=None):
                     pline = adcpy.util.map_flow_to_line(t.xy,flows[:,0],flows[:,1])
                 else:
                     pline = adcpy.util.map_xy_to_line(t.xy)                    
-            t.xy_regrid(dxy=2.0,dz=0.25,
+            t.xy_regrid(dxy=flow_regrid_dxy,dz=flow_regrid_dz,
                         pline=pline,
                         sd_drop=flow_regrid_bin_sd_drop,
                         mtime_regrid=True)
@@ -163,12 +165,16 @@ def transect_flow_estimator(pre_process_input_file=None):
         if flow_regrid:
             UVW,UVWens,flow,survey_area = \
               adcpy_recipes.calc_transect_flows_from_uniform_velocity_grid(t,use_grid_only=False)
+            #print 'Flows:'
+            #print UVW,UVWens,flow,survey_area
             Uflow = flow[0]
             Vflow = flow[1]
             U = UVW[0]
             V = UVW[1]
         else:
             U,Uflow,total_area,survey_area = t.calc_crossproduct_flow()
+            #print 'Crossproduct Flows:'
+            #print U,Uflow,total_area,survey_area
             V, Vflow = (np.nan,np.nan)
             
         if flow_plot_mean_vectors:
@@ -251,6 +257,18 @@ def transect_flow_estimator(pre_process_input_file=None):
     # plot timeseries data after all files have been processed
     if flow_plot_timeseries_values and data_file_num>0:
 
+        # sort by mtime
+        mtimes = np.array(mtimes)        
+        nn = np.argsort(mtimes)
+        mtimes = mtimes[nn]
+        mean_u = np.array(mean_u)[nn]
+        mean_v = np.array(mean_v)[nn]
+        total_flow = np.array(total_flow)[nn]
+        align_angle = np.array(align_angle)[nn]
+        ustars = np.array(ustars)[nn]
+        kxs = np.array(kxs)[nn]
+        kys = np.array(kys)[nn]
+
         # plot timeseries figures
         fig_handle = plt.figure()
         plt.subplot(311)
@@ -260,6 +278,9 @@ def transect_flow_estimator(pre_process_input_file=None):
         mean_v = np.array(mean_v)
         total_flow = np.array(total_flow)
         aa = -align_angle*np.pi/180.0
+        if np.isnan(mean_v[0]):
+             # probably crossproduct flows were calculated, which has zero v flow
+            mean_v[:] = 0.0
         uq = np.cos(aa)*mean_u + np.sin(aa)*mean_v
         vq = -np.sin(aa)*mean_u + np.cos(aa)*mean_v
         v_mag = np.sqrt(uq**2 + vq**2)
@@ -339,6 +360,7 @@ def main():
 # run myself
 if __name__ == "__main__":
 
+    transect_flow_estimator('trn_pre_input_NSL052914_0.py')
     #transect_flow_estimator('trn_pre_input_RIO.py')
-    main()
+    #main()
 

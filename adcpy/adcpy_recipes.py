@@ -572,14 +572,6 @@ def find_centroid_distance_matrix(adcp_obs):
 
 def transect_rotate(adcp_transect,rotation,xy_line=None):
     """ 
-    Calculates all possible distances between a list of ADCPData objects (twice...ineffcient)
-    Inputs:
-        adcp_obs = list ADCPData objects, shape [n]
-    Returns:
-        centers = list of centorids of ensemble locations of input ADCPData objects, shape [n]
-        distances = xy distance between centers, shape [n-1]
-    """    
-    """ 
     Rotates ADCPTransectData U and V velocities.
     Inputs:
         adcp_transect = ADCPTransectData object

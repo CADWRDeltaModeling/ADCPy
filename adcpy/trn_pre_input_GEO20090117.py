@@ -29,6 +29,8 @@ working_directory = r'C:\Delta\ADCPy\GEO20090116'
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WCI102009' # done
 #working_directory = r'Z:\temp\adcp_anaylsis_stations\WCI050608'
 file_list = None
+file_ext = r'r.000'
+file_type = r'ADCPRdiWorkhorseData'
 
 # Processing Options
 # -----------------------------------------------------------------------------
