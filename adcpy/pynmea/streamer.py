@@ -1,6 +1,6 @@
 """ For dealing with streams of nmea data
 """
-from pynmea.exceptions import NoDataGivenError
+from .exceptions import NoDataGivenError
 
 
 class NMEAStream(object):
@@ -53,10 +53,10 @@ class NMEAStream(object):
 
         data = self.head + read_data
         # DBG:
-        print "Joined head and read_data to get"
-        print "-"*20
-        print data
-        print "-"*20
+        print("Joined head and read_data to get")
+        print("-"*20)
+        print(data)
+        print("-"*20)
         raw_sentences = self._split(data)
         if not read_data:
             self.head = ''
@@ -74,7 +74,7 @@ class NMEAStream(object):
             errors.
         """
         sen_type = sentence.split(',')[0].lstrip('$')
-        sen_mod = __import__('pynmea.nmea', fromlist=[sen_type])
+        sen_mod = __import__('adcpy.pynmea.nmea', fromlist=[sen_type])
         sen_obj = getattr(sen_mod, sen_type, None)
         return sen_obj
 

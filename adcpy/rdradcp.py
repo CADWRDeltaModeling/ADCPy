@@ -809,8 +809,8 @@ def rd_buffer(fd,num_av,msg=msg_print):
         # fprintf([dec2hex(id1(1)) '--' dec2hex(id1(2)) '\n'])
 
         if search_cnt==num_search:
-            print "ERROR: Searched %d entries..."%search_cnt
-            print "Not a workhorse/broadband file or bad data encountered: -> %x%x"%(id1[0],id1[1])
+            print("ERROR: Searched %d entries..."%search_cnt)
+            print("Not a workhorse/broadband file or bad data encountered: -> %x%x"%(id1[0],id1[1]))
             ens = None
             return ens,hdr,cfg,pos
         elif search_cnt>0:
@@ -1065,7 +1065,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
  
                 specID=fromfile(fd,uint16,1)[0]
                 msgsiz=fromfile(fd,int16,1)[0]
-                deltaT=fromfile(fd,uchar,8)
+                deltaT=fromfile(fd,uint8,8)
                 nbyte=2+12
  
                 fd.seek(msgsiz,os.SEEK_CUR)

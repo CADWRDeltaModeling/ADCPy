@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Batch processing and logic for organizing and binning multiple ADCPData objects.
-Tools and methods for cateogizing/manipulating/visualizing data in ADCPy/ADCPData
+Tools and methods for categorizing/manipulating/visualizing data in ADCPy/ADCPData
 format.  This module is dependent upon adcpy. 
 
 This code is open source, and defined by the included MIT Copyright License 
@@ -8,6 +8,8 @@ This code is open source, and defined by the included MIT Copyright License
 Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 2014-09 - First Release; blsaenz, esatel
 """
+from __future__ import print_function
+
 import numpy as np  # numpy 1.7 
 import glob
 import os
@@ -18,10 +20,13 @@ import scipy.stats.morestats as ssm
 from matplotlib.dates import num2date#,date2num,
 import datetime
 
-import adcpy
+from . import adcpy
+from . import adcpy_utilities as util
+
 
 def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
-                      stats=True,plotline_from_flow=False,sd_drop=0):
+                      stats=True,plotline_from_flow=False,sd_drop=0,
+                      plotline_orientation='default'):
     """ 
     This method takes a list of input ADCPy transect objects, and:
     1) Projects and re-grids each transect to either the input plotline, or a best
@@ -32,28 +37,32 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         transects = list of ADCPTransectData objects
         dxy = new grid spacing in the xy (or plotline) direction
         dz = new regular grid spacing in the z direction (downward for transects)
-        plotline = optional dsignated line in the xy plane for projecting ensembles onto
+        plotline = optional designated line in the xy plane for projecting ensembles onto
+        plotline_orientaion=how to resolve ambiguity in plotline orientation.  'default'
+          uses (probably) the min x point as the origin.  'river' makes the average flow
+          positive, putting river left at 0 and river right at >0.  This is ignored
+          if plotline or plotline_from_flow are given.
         return_adcpy = True: returns an ADCPData object containing averaged velocities
                        False: returns a 3D numpy array containing U,V,W gridded veloctiy
-    """    
+    """
     n_transects = len(transects)
     avg = transects[0].copy_minimum_data()
     if n_transects > 1:
-        # ugly brute-force method ot find furthest points;  
+        # ugly brute-force method ot find furthest points;
         # ConvexHull-type approach is only available in more recent scipy
         max_dist = 0.0
         centers = [adcpy.util.centroid(a.xy) for a in transects]
         for c1 in centers:
             for c2 in centers:
                 max_dist = max(max_dist,adcpy.util.find_line_distance(c1,c2))
-        print "max dist:",max_dist
+        print("max dist:",max_dist)
         if max_dist > 30.0:
-            print 'WARNING: averaging transects with maximum centroid distance of %f m!'%max_dist
-            
+            print('WARNING: averaging transects with maximum centroid distance of %f m!'%max_dist)
+
     # gather position data for new grid generation
     xy_data = np.vstack([transects[i].xy for i in range(n_transects)])
-    z_data = np.hstack([transects[i].bin_center_elevation for i in range(n_transects)])        
-    
+    z_data = np.hstack([transects[i].bin_center_elevation for i in range(n_transects)])
+
     # find common grid
     if plotline is None:    
         if plotline_from_flow:
@@ -61,12 +70,18 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
             xy_line = adcpy.util.map_flow_to_line(xy_data,flows[:,0],flows[:,1])
         else:
             xy_line = adcpy.util.map_xy_to_line(xy_data)
+            if plotline_orientation=='river':
+                flows = transects[0].calc_ensemble_flow(range_from_velocities=False)
+                Qmean=flows[:,:2].mean(axis=0) # [Qx,Qy]
+                tran_tangent=xy_line[1,:] - xy_line[0,:]
+                if tran_tangent[0]*Qmean[1] - tran_tangent[1]*Qmean[0] < 0:
+                    xy_line=xy_line[::-1,:]
     else:
         xy_line = plotline
     # NEED logic around determining whether original data was negative down, positive up, etc
     z_mm = np.array([np.max(z_data),np.min(z_data)])
-    (dd,xy_new_range,xy_new,z_new) = adcpy.util.new_xy_grid(xy_data,z_mm,dxy,dz,xy_line,True)  
-        
+    (dd,xy_new_range,xy_new,z_new) = adcpy.util.new_xy_grid(xy_data,z_mm,dxy,dz,xy_line,True)
+
     # initialize arrays
     xy_bins = adcpy.util.find_regular_bin_edges_from_centers(xy_new_range)
     z_bins = adcpy.util.find_regular_bin_edges_from_centers(z_new)
@@ -109,10 +124,11 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         avg.xy_srs = transects[0].xy_srs
         sources = [transects[i].source for i in range(n_transects)]
         avg.source = "\n".join(sources)
-        mtimes = [sp.nanmedian(transects[i].mtime) for i in range(n_transects)]
-        mtimes = np.array(filter(None,mtimes))
+        mtimes = [util.nanmedian(transects[i].mtime) for i in range(n_transects)]
+        # list() to force realization
+        mtimes = np.array(list(filter(None,mtimes)))
         if mtimes.any():
-            avg.mtime = np.ones(new_shape[0],np.float64) * sp.nanmean(mtimes)
+            avg.mtime = np.ones(new_shape[0],np.float64) * util.nanmean(mtimes)
         if plotline is not None:
             plotlinestr = "[%f,%f],[%f,%f]"%(plotline[0,0],
                                              plotline[0,1],
@@ -121,6 +137,7 @@ def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
         else:
             plotlinestr='None'
         avg.history_append('average_transects(dxy=%f,dz=%f,plotline=%s)'%(dxy,dz,plotlinestr))
+        avg.xy_line=xy_line
         return avg
     else:
         return avg.velocity
@@ -194,7 +211,7 @@ def write_csv_velocity_db(adcp,csv_filename,no_header=False,un_rotate_velocties=
             elif adcp.lonlat is not None:
                 header = ['longitude [degE]','latitude [degN]']
             else:
-                print 'Error, input adcp has no position data - no file written'
+                print('Error, input adcp has no position data - no file written')
                 return
             header.extend(['z [m]','datetime','u [m/s]','v [m/s]','w [m/s]',])                
             arraywriter.writerow(header)
@@ -253,7 +270,7 @@ def write_ensemble_mean_velocity_db(adcp,csv_filename,no_header=False,
             elif adcp.lonlat is not None:
                 header = ['longitude [degE]','latitude [degN]']
             else:
-                print 'Error, input adcp has no position data - no file written'
+                print('Error, input adcp has no position data - no file written')
                 return
             header.extend(['datetime','U [m/s]','V [m/s]'])                
             arraywriter.writerow(header)
@@ -301,7 +318,7 @@ def group_adcp_obs_by_spacetime(adcp_obs,max_gap_m=30.0,
     """    
     space_groups = group_adcp_obs_within_space(adcp_obs,max_gap_m)
     for i in range(len(space_groups)):
-        print 'space group',i,'- ',len(space_groups[i]), 'observations'
+        print('space group',i,'- ',len(space_groups[i]), 'observations')
     spacetime_groups = []
     for grp in space_groups:
         (sub_groups, gaps) = group_adcp_obs_within_time(grp,
@@ -309,7 +326,7 @@ def group_adcp_obs_by_spacetime(adcp_obs,max_gap_m=30.0,
                                                         max_group_size)
         spacetime_groups.extend(sub_groups)
     for i in range(len(spacetime_groups)):
-        print 'spacetime group',i,'- ',len(spacetime_groups[i]), 'observations'    
+        print('spacetime group',i,'- ',len(spacetime_groups[i]), 'observations')
     return spacetime_groups
 
 
@@ -378,7 +395,7 @@ def group_adcp_obs_within_time(adcp_obs,max_gap_minutes=20.0,max_group_size=6):
             adcp_obs_sorted = [ adcp_obs_sorted[i] for i in nnan_i ]
             return group_according_to_gap(adcp_obs_sorted,gaps,max_gap_minutes,max_group_size=6)
         else:      
-            raise Exception,"find_transects_within_minimum_time_gap(): No valid times found in input files!"
+            raise Exception("find_transects_within_minimum_time_gap(): No valid times found in input files!")
 
 
 
@@ -400,7 +417,7 @@ def find_adcp_files_within_period(working_directory,max_gap=20.0,max_group_size=
         data_files = glob.glob(os.path.join(working_directory,'*[rR].000'))
         data_files.extend(glob.glob(os.path.join(working_directory,'*.nc')))
     else:
-        print "Path (%s) not found - exiting."%working_directory
+        print("Path (%s) not found - exiting."%working_directory)
         exit()
     
     start_times = list()
@@ -488,18 +505,20 @@ def group_according_to_gap(flat_list,gaps,max_gap,max_group_size):
     return (groups, group_gaps)
 
 
-def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_only=False):     
+def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_only=False,
+                                                   xy_line=None):
     """ 
     Calculates the cross-sectional area of the ADCP profiles from projection
     data, and multiplies it by the velocities to calculate flows
     and mean velocities.
     Inputs:
-        adpc = ADCPData object. projected to an xy regualr grid projection
+        adpc = ADCPData object. projected to an xy regular grid projection
         depths = optional 1D array of depths that correspond the ensemble 
           dimension of velocity in adcp
         use_grid_only = True: use each grid cell to calc flows/mean velocities
           False: first find depth-average velocties, then use depths to find 
           flows/mean velocties
+        xy_line = [[x0,y0],[x1,y1]] defining orientation of the transect
     Returns:
         scalar_mean_vel = mean veolocity of total flow shape [3] {m/s}
         depth_averaged_vel = depth averaged velocity, shape [n,3] {m/s}
@@ -508,17 +527,16 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
     """    
     # check to see if adcp is child of ADCPTransectData ??
     if adcp.xy is None:
-        ValueError("xy projection required")
-        raise
+        raise ValueError("xy projection required")
 
     if adcp.rotation_angle is None:
-        print 'Warning - No alignment axis set: Calculating flows according to U=East and V=North'
+        print('Warning - No alignment axis set: Calculating flows according to U=East and V=North')
     rfv = False
     if not "bt_depth" in dir(adcp):
         rfv = True
     elif adcp.bt_depth is None:
         rfv = True
-    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy,pline=xy_line)
     dxy = abs(dd[0]-dd[1])
     dz = abs(adcp.bin_center_elevation[0]-adcp.bin_center_elevation[1])
     (depths, velocity_mask) = adcp.get_velocity_mask(range_from_velocities=rfv,nan_mask=True)
@@ -532,15 +550,15 @@ def calc_transect_flows_from_uniform_velocity_grid(adcp,depths=None,use_grid_onl
         for i in range(3):
             total_flow[i] = np.nansum(np.nansum(adcp.velocity[:,:,i]*area_grid))
             masked_vel = adcp.velocity[:,:,i]*velocity_mask
-            depth_averaged_vel[:,i] = sp.nanmean(masked_vel,axis=1)
-            scalar_mean_vel[i] = sp.nanmean(masked_vel.ravel())
+            depth_averaged_vel[:,i] = util.nanmean(masked_vel,axis=1)
+            scalar_mean_vel[i] = util.nanmean(masked_vel.ravel())
     else:      
         if rfv:
-            print 'Warning - No bottom depth set: Calculating flows according valid velocity bins only'
+            print('Warning - No bottom depth set: Calculating flows according valid velocity bins only')
         total_survey_area = np.nansum(dxy*depths)
         depth_averaged_vel =  adcp.ensemble_mean_velocity(range_from_velocities=rfv)
         depth_integrated_flow = adcp.calc_ensemble_flow(range_from_velocities=rfv)
-        scalar_mean_vel = sp.nanmean(depth_averaged_vel,axis=0)
+        scalar_mean_vel = util.nanmean(depth_averaged_vel,axis=0)
         total_flow = np.nansum(depth_integrated_flow,axis=0)
     
     return (scalar_mean_vel, depth_averaged_vel, total_flow, total_survey_area)
@@ -572,14 +590,6 @@ def find_centroid_distance_matrix(adcp_obs):
 
 def transect_rotate(adcp_transect,rotation,xy_line=None):
     """ 
-    Calculates all possible distances between a list of ADCPData objects (twice...ineffcient)
-    Inputs:
-        adcp_obs = list ADCPData objects, shape [n]
-    Returns:
-        centers = list of centorids of ensemble locations of input ADCPData objects, shape [n]
-        distances = xy distance between centers, shape [n-1]
-    """    
-    """ 
     Rotates ADCPTransectData U and V velocities.
     Inputs:
         adcp_transect = ADCPTransectData object
@@ -587,8 +597,8 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
           None - no rotation of averaged velocity profiles
          'normal' - rotation based upon the normal to the plotline (default rotation type)
          'pricipal flow' - uses the 1st principal component of variability in uv flow direction
-         'Rozovski' - individual rotation of each verticle velocity to maximize U 
-         'no transverse flow' - rotation by the net flow vector is used to minnumize V
+         'Rozovski' - individual rotation of each vertical velocity to maximize U
+         'no transverse flow' - rotation by the net flow vector is used to minimize V
         xy_line = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
     Returns
         adcp_transect = ADCPTransectData object with rotated uv velocities
@@ -597,7 +607,7 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
         # find angle of line:
         if xy_line is None:
             if adcp_transect.xy is None:
-                raise Exception,"transect_rotate() error: ADCPData must be xy projected, or input xy_line must be supplied for normal rotation"
+                raise Exception("transect_rotate() error: ADCPData must be xy projected, or input xy_line must be supplied for normal rotation")
             xy_line = adcpy.util.map_xy_to_line(adcp_transect.xy)
         theta = adcpy.util.calc_normal_rotation(xy_line)
     elif rotation == "no transverse flow":
@@ -610,7 +620,7 @@ def transect_rotate(adcp_transect,rotation,xy_line=None):
         flows = adcp_transect.calc_ensemble_flow(range_from_velocities=True)
         theta = adcpy.util.principal_axis(flows[:,0],flows[:,1],calc_type='EOF')
     elif type(rotation) is str:
-        raise Exception,"In transect_rotate(): input 'rotation' string not understood: %s"%rotation
+        raise Exception("In transect_rotate(): input 'rotation' string not understood: %s"%rotation)
     else:
         theta = rotation
     
@@ -632,8 +642,7 @@ def find_uv_dispersion(adcp):
     """
     # should check to see if it is regular grid - required for dispersion calc
     if adcp.xy is None:
-        ValueError("adcp.xy (xy projection) must exist for dispersion calculation")
-        raise
+        raise ValueError("adcp.xy (xy projection) must exist for dispersion calculation")
     if adcp.bt_depth in adcp.__dict__:
         depth = adcp.bt_depth
     else:

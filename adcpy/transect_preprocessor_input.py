@@ -14,6 +14,11 @@ Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 2014-09 - First Release; blsaenz, esatel
 
 """
+file_list = None
+file_ext = r'r.000'
+file_type = r'ADCPRdiWorkhorseData'
+
+
 
 # ADCP Data File location(s)
 # -----------------------------------------------------------------------------

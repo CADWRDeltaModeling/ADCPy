@@ -1,20 +1,28 @@
 """ Calculations used by the adcpy module such as smoothing, principal flow direction and averaging
-This module is independent of adcpy, but is imported by it and is available as adcpy.util.  
+This module is independent of adcpy, but is imported by it and is available as adcpy.util.
 This tools were abstracted out of other classes, either because of potential for reuse in
 recipes, automated scripting or with data from outside adcpy.  They allows potentially complicated
 data processing using the adcpy module to remain readable, hopefully.
 
-This code is open source, and defined by the included MIT Copyright License 
+This code is open source, and defined by the included MIT Copyright License
 
 Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 2014-09 - First Release; blsaenz, esatel
 """
+from __future__ import print_function
+
+import six
 import numpy as np
+import scipy.stats as sp1
 import scipy.stats.stats as sp
 import scipy.stats.morestats as ssm
 import scipy.interpolate
 import warnings
 from osgeo import osr
+
+# These have moved around depending on versions
+nanmean=getattr(sp,'nanmean',None) or getattr(np,'nanmean')
+nanmedian=getattr(sp,'nanmedian',None) or getattr(np,'nanmedian')
 
 try:
     import fftw3
@@ -384,15 +392,13 @@ def get_axis_num_from_str(axes_string):
     Returns:
         ax_list = python list containing the integers 0,1, or 2 
     """    
-    if type(axes_string) is not str:
-        ValueError("axes_string argument must be a string")
-        raise
+    if not isinstance(axes_string, six.string_types):
+        raise ValueError("axes_string argument must be a string")
     ax_list = []
     for char in axes_string:
         if char in 'UVW': char = char.lower()
         if char not in 'uvw':
-            ValueError("axes_string letters must be u,v, or w only")
-            raise
+            raise ValueError("axes_string letters must be u,v, or w only")
         if char == 'u':
             ax_list.append(0)
         elif char == 'v':
@@ -539,7 +545,7 @@ def createLine(v1,v2):
         line = (v1[0], v1[1], v2[0]-v1[0], v2[1]-v1[1])   
     else:
         # error
-        print 'createLine argument error: Please enter a pair of x-y points(as lists)'
+        print('createLine argument error: Please enter a pair of x-y points(as lists)')
 
     return line
 
@@ -606,7 +612,7 @@ def linePosition(point, line):
         
     except:
               
-       print 'linePosition: line and point must be equal or singular - this is probably the error.'
+       print('linePosition: line and point must be equal or singular - this is probably the error.')
        raise
     
     #print 'dxl,dyl',dxl,dyl
@@ -640,11 +646,11 @@ def meanangle(inangle,dim=0,sens=1e-12):
     ind = sum(np.shape(inangle))
     if ind == 1 or np.shape(inangle) :
         #This is a scalar
-        print 'Scalar input encountered, aborting'
+        print('Scalar input encountered, aborting')
         out = inangle
         return out
     if dim > ind:
-        print 'Dimension requested is greater than dimension of input angles, aborting.'
+        print('Dimension requested is greater than dimension of input angles, aborting.')
         out = inangle
         return out
 
@@ -753,13 +759,13 @@ def fillProParab(u,z1,depth1,bbc=0):
 
     # depth is negative ?
     depth = depth1
-    if sp.nanmean(depth) < 0:
+    if nanmean(depth) < 0:
         depth=-depth
     
     # find dimensions
     if len(np.shape(depth)) > 1:
         nt = len(depth)
-        aa = z1.shape
+        aa = np.array(z1.shape)
         nz = aa[np.logical_and(aa!=nt,aa>1)]
     elif (len(z1.shape)) == 1:
         nz = len(z1)
@@ -790,7 +796,7 @@ def fillProParab(u,z1,depth1,bbc=0):
         
         if len(a) < 3:
     
-            print 'fillProParab: insufficient data in profile %i'%kk
+            print('fillProParab: insufficient data in profile %i'%kk)
     
         else:
 
@@ -860,17 +866,17 @@ def calcKxKy(vU,vV,dd,z,depth):
         
     """
     ############ calc Ky --> transverse mixing #################
-    Ubar = sp.nanmean(np.reshape(vU,(np.size(vU),1)))
-    Vbar = sp.nanmean(np.reshape(vV,(np.size(vV),1)))
+    Ubar = nanmean(np.reshape(vU,(np.size(vU),1)))
+    Vbar = nanmean(np.reshape(vV,(np.size(vV),1)))
     
     nx = np.size(depth)
     nz = np.size(z)
-    #Ubar = sp.nanmean(vU,1)        # Ubar(n) = nanmean(A(n).uuex(:));
-    #Vbar = sp.nanmean(vV,1)        # Vbar(n) = nanmean(A(n).vvex(:));
+    #Ubar = nanmean(vU,1)        # Ubar(n) = nanmean(A(n).uuex(:));
+    #Vbar = nanmean(vV,1)        # Vbar(n) = nanmean(A(n).vvex(:));
     
     bb = np.max(dd) - np.min(dd)      # bb(n) = max(A(n).dd)-min(A(n).dd);
     # cross-sect avg depth (as in Deng) --> thalweg instead?
-    #Hbar = sp.nanmean(self.bt_depth) # 
+    #Hbar = nanmean(self.bt_depth) # 
     
     ### calc ustar
     # pick a vel from a constant ht above bed --> choose 2 m  
@@ -897,12 +903,12 @@ def calcKxKy(vU,vV,dd,z,depth):
     # calc ustar: ustar^2 =  Cd*U^2
     Cd = 0.003
     ustar = np.sqrt(Cd*U2m**2)
-    ustbar = sp.nanmean(ustar)
-    U2mbar = sp.nanmean(U2m)
+    ustbar = nanmean(ustar)
+    U2mbar = nanmean(U2m)
     
     # Ky - just 1 lateral sections
-    vpr = sp.nanmean(vV)
-    vpr = vpr-sp.nanmean(vpr)
+    vpr = nanmean(vV)
+    vpr = vpr-nanmean(vpr)
     kwet = np.nonzero(~np.isnan(vpr))
     vpr = vpr[kwet]
     nzgw = np.size(kwet)
@@ -940,7 +946,7 @@ def calcKxKy(vU,vV,dd,z,depth):
     zwet = -3                                  # depth to deep enough to include in xsect
     iwet = np.nonzero(np.less(d1,zwet)) # wet (and moderately deep) columns    
     nygw = np.size(iwet)                        # no. wet cells    
-    upr = sp.nanmean(vU,1)-Ubar                # depth avg - xsect mean
+    upr = nanmean(vU,1)-Ubar                # depth avg - xsect mean
     #bg = dd[iwet[nygw-1]] - dd[iwet[0]]           # wet width
     dyg = abs(dd[1] - dd[0])  
     #alph = dyg/bg*np.ones(len(iwet))           # fractional width (const in this case)
@@ -1118,7 +1124,7 @@ def calc_Rozovski_rotation(Uflow,Vflow):
     Output:
         Streamwise angles, shape [ne]
     """
-    return np.arctan2(Vflow,Uflow)
+    return np.arctan2(Vflow,Uflow) 
 
 
 def calc_net_flow_rotation(Uflow,Vflow):
@@ -1143,7 +1149,7 @@ def average_vector(npvector,avg_shape):
     Output:
         sequentially averaged npvector data 
     """    
-    return sp.nanmean(npvector.reshape(avg_shape),1)
+    return nanmean(npvector.reshape(avg_shape),1)
 
 
 def average_vector_clip(npvector,n_avg):
@@ -1345,7 +1351,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         hdg_bt_bin_count[bin_idx] = sum(in_bin)
         if hdg_bt_bin_count[bin_idx] >= hdg_bin_min_samples:
             #hdg_bt_bin_stddev[bin_idx] = sp.nanstd(hdg_bt_in_bin)
-            #hdg_bt_bin_mean[bin_idx]   = sp.nanmean(hdg_bt_in_bin)
+            #hdg_bt_bin_mean[bin_idx]   = nanmean(hdg_bt_in_bin)
             #print 'mean1: ',hdg_bt_bin_mean[bin_idx]
             #hdg_bt_bin_stddev[bin_idx] = ssm.circstd(hdg_bt_in_bin,high=360,low=0)
             #hdg_bt_bin_mean[bin_idx] = ssm.circmean(hdg_bt_in_bin,high=360,low=0)
@@ -1374,46 +1380,39 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         if abs(hdmi2[n]-hdmi2[n-1]) > abs(hdmi2[n]-hdmi2[n-1]+360):
             hdmi2[n]=hdmi2[n]+360
     hdg_bt_bin_mean[nn]=hdmi2
-    
+
     if sum(~np.isnan(hdg_bt_bin_mean)) < 3:
-        print "Not enough valid heading bins for head_correct."
-        print "Try reducing hdg_bin_size and/or hdg_bin_min_samples"
-        exit()
-    
+        print("Not enough valid heading bins for head_correct.")
+        print("Try reducing hdg_bin_size and/or hdg_bin_min_samples")
+        assert False # exit()
+
     # hdg_bt_bin_mean[len(hdg_bt_bin_mean)-1]=360  # hack-in test
     #print 'hdg_bt_bin_count:',hdg_bt_bin_count
     #print 'bin_centers:',bin_centers
     #print 'hdg_bt_bin_mean:',hdg_bt_bin_mean
     delta_hdg = bin_centers-hdg_bt_bin_mean  
-    
-    #import fit_hdg_error
-    #reload(fit_hdg_error)
-    
-    #print 'hdg_bt_bin_mean:',hdg_bt_bin_mean,'delta_hdg',delta_hdg                        
 
-    
+    #print 'hdg_bt_bin_mean:',hdg_bt_bin_mean,'delta_hdg',delta_hdg
+
     if np.sum(~np.isnan(hdg_bt_bin_mean)) < 5:
         # perform linear fit if data is sparse
-        
-        cf = (-sp.nanmean(delta_hdg),None,None)
+        cf = (-nanmean(delta_hdg),None,None)
     else:
         # perform harmonic fit for data that spans a large number of headings            
         (cf,yf) = fit_headerror(hdg_bt_bin_mean,delta_hdg)
-    
-    print 'cf:',cf
-    
-    return cf        
-    
 
-def find_head_correct(hdg_in,                
-                    cf=None,
-                    u_min_bt=None,
-                    hdg_bin_size=None,
-                    hdg_bin_min_samples=None,
-                    mag_dec=None,
-                    mtime_in=None,
-                    bt_vel_in=None,
-                    xy_in=None):
+    print('cf:',cf)
+    return cf
+
+def find_head_correct(hdg_in,
+                      cf=None,
+                      u_min_bt=None,
+                      hdg_bin_size=None,
+                      hdg_bin_min_samples=None,
+                      mag_dec=None,
+                      mtime_in=None,
+                      bt_vel_in=None,
+                      xy_in=None):
     """
     Makes harmonic heading corrections to input headings, either from supplied
     fit (cf) or my generating a new fit using (mtime_in,hgd_in,bt_vel_in, and
@@ -1439,27 +1438,26 @@ def find_head_correct(hdg_in,
         cf = np.zeros(3,dtype=np.float64)
         
         if mag_dec is not None:
-            print 'No fitted heading correction found - performing single magnetic declination correction'            
+            print('No fitted heading correction found - performing single magnetic declination correction')
             cf[0] = mag_dec
-            
+
         # if no 'cf' fit data is supplied, generate fit from self
-        else: 
-            print 'Warning: attemping to fit heading correcton based on single file.'
+        else:
+            print('Warning: attemping to fit heading correcton based on single file.')
             try:
                 cf = fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,
                                      u_min_bt=u_min_bt,
                                      hdg_bin_size=hdg_bin_size,
                                      hdg_bin_min_samples=hdg_bin_min_samples)
             except:
-                print 'head_correct fitting failure - heading correction not performed!'
+                print('head_correct fitting failure - heading correction not performed!')
                 return 0.0
-        
     return cf[0] + cf[1]*np.cos((np.pi/180)*hdg_in) + cf[2]*np.sin((np.pi/180)*hdg_in)
-    
+
 
 def coordinate_transform(xy_in,in_srs,xy_srs,interp_nans=False):
     """
-    Tranforms (re-projects) coordinates xy_in (with EPSG projection in_srs) to 
+    Tranforms (re-projects) coordinates xy_in (with EPSG projection in_srs) to
     new projection xy_srs, with optional linear interpolation of missing values.
     Inputs:
         xy_in = 2D numpy array, projected positions, shape [n,2]
@@ -1487,7 +1485,7 @@ def coordinate_transform(xy_in,in_srs,xy_srs,interp_nans=False):
                 xy[:,0] = interp_nans_1d(xy[:,0])
                 xy[:,1] = interp_nans_1d(xy[:,1])
             except:
-                print 'lonlat_to_xy: Not enough valid navigation locations to fill NaNs'
+                print('lonlat_to_xy: Not enough valid navigation locations to fill NaNs')
                 raise
     
     return xy
@@ -1534,13 +1532,13 @@ def rotate_velocity(delta,vE_in,vN_in):
            error_dims = 1
 
     if error_dims == 1:
-        print "Error in rotate_velocity: delta is not mappable to velocities."
-        print "Check sizes of input delta and velocity."
+        print("Error in rotate_velocity: delta is not mappable to velocities.")
+        print("Check sizes of input delta and velocity.")
         raise ValueError
     
     # need to coorect for the fact that sometimes there are fewer headers than velocities!
     vE = np.cos(delta1)*vE_in + np.sin(delta1)*vN_in
-    vN = -np.sin(delta1)*vE_in + np.cos(delta1)*vN_in    
+    vN = -np.sin(delta1)*vE_in + np.cos(delta1)*vN_in
     return (vE, vN)
 
 
@@ -1577,11 +1575,11 @@ def find_sd_greater(nparray,elev,sd=3,axis=1):
     """
     nens,vbins = np.shape(nparray)
     if axis == 1:
-        vsig = np.array([sp.nanstd(nparray,1)]).T # transpose to vertical
-        test = sd*np.ones([vbins])*vsig + np.ones([vbins])*np.array([sp.nanmean(nparray,1)]).T
+        vsig = np.array([np.nanstd(nparray,1)]).T # transpose to vertical
+        test = sd*np.ones([vbins])*vsig + np.ones([vbins])*np.array([nanmean(nparray,1)]).T
     else:
-        vsig = np.array([sp.nanstd(nparray)])
-        test = sd*np.ones((nens,1))*vsig + np.ones((nens,1))*np.array([sp.nanmean(nparray)])    
+        vsig = np.array([np.nanstd(nparray)])
+        test = sd*np.ones((nens,1))*vsig + np.ones((nens,1))*np.array([nanmean(nparray)])    
     return np.greater(nparray,test) 
 
 
@@ -1605,19 +1603,19 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
     good_vels = np.sum(np.sum(~np.isnan(nparray)))
     fraction_dropped = np.sum(rm) / good_vels
     if fraction_dropped > warning_fraction:
-       print 'Warning: greater than %3.2f%% of velocities will be removed.'%warning_fraction        
-    
-    # drop values    
+       print('Warning: greater than %3.2f%% of velocities will be removed.'%warning_fraction)
+
+    # drop values
     new_array = np.copy(nparray)
     new_array[rm] = np.nan
 
     # interpolate holes if desired
     if interp_holes:
         if elev is None:
-            print "Error in remove_values: setting 'elev' is required to interpolate holes"
+            print("Error in remove_values: setting 'elev' is required to interpolate holes")
             return 0.0
         if axis is None:
-            print "Error in remove_values: setting 'axis' is required to interpolate holes"
+            print("Error in remove_values: setting 'axis' is required to interpolate holes")
             return 0.0
         nens,vbins = np.shape(new_array)
         i, j = np.nonzero(rm)
@@ -1626,7 +1624,7 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
         new_interp = np.copy(new_array)  # generate array to interpolate into, so interpolted values
         if axis == 1:
             if np.size(elev) != vbins:
-                print "Error in remove_values:  nparray size, elev size, and axis do not agree"
+                print("Error in remove_values:  nparray size, elev size, and axis do not agree")
                 return 0.0
             # interpolate in 2nd dimension of new_array
             for m in range(len(i)):
@@ -1634,16 +1632,77 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
                 new_interp[i[m],j[m]] = np.interp(elev[j[m]],elev[nn],np.squeeze(new_array[i[m],nn]))
         else:
             if np.size(elev) != nens:
-                print "Error in remove_values:  nparray size, elev size, and axis do not agree"
+                print("Error in remove_values:  nparray size, elev size, and axis do not agree")
                 return 0.0
             # interpolate in 1st dimension of new_array
             for m in range(len(i)):
                 nn=np.nonzero(~np.isnan(new_array[:,j[m]]))
                 new_interp[i[m],j[m]] = np.interp(elev[i[m]],elev[nn],np.squeeze(new_array[nn,j[m]]))
-        
+
         new_array = new_interp
-        
+
     return new_array
+
+
+def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
+    """
+    Appends array ar2 to ar1 along the matching dimension given in shapes. If
+    either of the arrays are singular or None, the returned array will be 
+    filled with the single value, or NaNs according to the given shape.
+    Inputs:
+        ar1 = numpy array
+        ar1_shape = desired shape of ar1 value(s)
+        ar2 = numpy arry to append to ar1
+        ar2_shape = desired shape of ar1 value(s)
+    Output:
+        numpy array or shape ar1+ar2
+    """
+    a1 = check_if_array_and_expand(ar1,ar1_shape)
+    a2 = check_if_array_and_expand(ar2,ar2_shape)
+    s1 = np.shape(a1)
+    s2 = np.shape(a2)
+    if len(s1) != len(s2):
+        print("append_array_w_fill: input array must have the same number of dimensions")
+        raise ValueError
+    axis = None
+    for i in range(len(s1)):       
+        if s1[i] != s2[i]:
+            axis = i
+            break
+    if axis is not None:
+        #print 'a1 shape:',np.shape(a1)
+        #print 'a2 shape:',np.shape(a2)
+        return np.concatenate((a1,a2),axis=axis)
+    else:
+        print("append_array_w_fill: no matching dimensions found for concatenation")
+        raise ValueError
+
+def check_if_array_and_expand(pa,out_shape):
+    """
+    Checks an input value 'pa' (potential array) to be sure it is of shape 
+    "out_shape."  If it is not, throw error.  If pa is a scalar, attempt
+    to return an array of shape out_shape of the type and value of pa.  If pa
+    is None, returns an array of NaNs in out_shape.
+    Inputs:
+        pa = numpy array, scalar, or None
+        out_shape = desired shape of output array
+    Output:
+        numpy array in shape of out_shape and value of pa
+    """
+    pa_shape = np.shape(pa)
+    pa_type = type(pa).__name__
+    if pa_type == "ndarray":
+        if out_shape == pa_shape:
+            return pa
+        else:
+            print('pa: ',pa)
+            print('out_shape: ',out_shape)
+            print("check_if_array_and_expand: out_shape incompatible with pa")
+            raise ValueError
+    elif pa_type == "NoneType":
+        return np.zeros(out_shape,np.float64)*np.nan
+    else:
+        return np.ones(out_shape,pa_type)*pa
 
 
 def kernel_smooth(kernel_size,nparray):
@@ -1661,7 +1720,7 @@ def kernel_smooth(kernel_size,nparray):
     #import convolve_nd
     
     if kernel_size < 3 or kernel_size > min(np.shape(nparray)):
-        print 'Error: kernel_size must be between 3 and the smallest array dimension'
+        print('Error: kernel_size must be between 3 and the smallest array dimension')
         return 0.0    
     kernel = np.ones([kernel_size,kernel_size])        
     nparray_out = np.copy(nparray)    
@@ -1716,7 +1775,7 @@ def find_extrapolated_grid(n_ens,elev,bot_depth=None,adcp_depth=None):
 
     z = elev   # expecting positive values
     if adcp_depth is not None:
-        z = z + sp.nanmean(adcp_depth)  # not currently extrapolating individual profiles...
+        z = z + nanmean(adcp_depth)  # not currently extrapolating individual profiles...
     dz = z[1] - z[0]
     new_bins = np.array([np.arange(z[0]-dz,0,-dz)]).T
     zex = np.append(np.sort(new_bins,0),z)
@@ -1863,18 +1922,22 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
     return (U, Uflow, total_survey_area, total_cross_sectional_area)
 
 
-def unweight_xy_positions(xy,tollerance=5.0):
+def unweight_xy_positions(xy,tolerance=5.0):
     """
     Sometimes you want to reduce the number of points on a line segment, for 
-    instance if you want to calculate a geometric centroid, but the somehow 
-    there was lot of loitering in one place.
+    instance if you want to calculate a geometric centroid, but somehow 
+    there was lot of loitering in one place in xy space. 
+    Inputs:
+        xy = 2D numpy array, projected x/y positions, shape [n,2]
+    Returns:
+        2D numpy array, projected x/y positions with reduced n in 1st dimension
     """      
     
     n_xy, two = np.shape(xy)
     included = np.ones(n_xy,np.bool)
     test_xy = xy[0,:]
     for i in range(1,n_xy):
-        if find_line_distance(test_xy,xy[i,:]) > tollerance:
+        if find_line_distance(test_xy,xy[i,:]) > tolerance:
             test_xy = xy[i,:]
         else:
             included[i] = False
@@ -2050,7 +2113,8 @@ def find_projection_distances(xy,pline=None):
         dd = distance along fitted line, in the direction of the fit line
     """
     if pline is None:
-        print 'Warning - generation of fit inside find_projection_distances() is deprecated.'
+        print('Warning - generation of fit inside find_projection_distances() is deprecated.')
+        #assert False # DBG
         xy_line = map_xy_to_line(xy)
     else:
         xy_line = pline
@@ -2148,7 +2212,7 @@ def new_xy_grid_old(xy,z,dx,dz,pline=None,fit_to_xy=True):
         z_new = z positions of new grid, 1D numpy array
     """
     # reverse dz if necessary
-    z_is_negative = np.less(sp.nanmean(z),0)
+    z_is_negative = np.less(nanmean(z),0)
     if z_is_negative == (dz < 0):
         my_dz = dz
     else:
@@ -2215,7 +2279,7 @@ def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
         z_new = z positions of new grid, 1D numpy array
     """
     # reverse dz if necessary
-    z_is_negative = np.less(sp.nanmean(z),0)
+    z_is_negative = np.less(nanmean(z),0)
     if z_is_negative == (dz < 0):
         my_dz = dz
     else:
@@ -2264,7 +2328,7 @@ def newer_new_xy_grid(xy,z,dx,dz,pline=None):
         z_new = z positions of new grid, 1D numpy array
     """
     # reverse dz if necessary
-    z_is_negative = np.less(sp.nanmean(z),0)
+    z_is_negative = np.less(nanmean(z),0)
     if z_is_negative == (dz < 0):
         my_dz = dz
     else:
@@ -2365,13 +2429,19 @@ def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
     """
     
     dims = np.shape(nparray)
+    
+    if len(np.shape(xy_new)) > 1:   
+        new_dim_xy = np.size(xy_new[:,0])
+    else:
+        new_dim_xy = np.size(xy_new)
+    
     if len(dims) == 1:
-        print 'xy_regrid_multiple: nparray must be 2D or 3D'
+        print('xy_regrid_multiple: nparray must be 2D or 3D')
         raise ValueError
     if len(dims) == 2:
-        new_dims = (np.size(xy_new[:,0]),dims[-1])
+        new_dims = (new_dim_xy,dims[-1])
     else:
-        new_dims = (np.size(xy_new[:,0]),np.size(z_new),dims[-1])
+        new_dims = (new_dim_xy,np.size(z_new),dims[-1])
     gridded_array = np.zeros(new_dims,np.float64)
     for i in range(dims[-1]):
         gridded_array[...,i] = xy_regrid(nparray[...,i],xy,xy_new,
@@ -2427,6 +2497,30 @@ def un_flip_bin_average(xy_range,z,avg):
         flipped.append(a)
     return flipped
 
+
+def new_t_grid(t,z,dt,dz):
+    """
+    Generates a regular grid with spacing set by dt and dz.
+    Inputs:
+        t = times , 1D array of shape [ne]
+        z = z position vector of current grid, shape [nb]
+        dt = new grid time in matplotlib datenum units
+        dz = new grid z resolution in z units
+    Returns:
+        t_new = times positions of new grid shape, 1D numpy array
+        z_new = z positions of new grid, 1D numpy array
+    """
+
+    t_new = np.arange(np.min(t),np.max(t),dt)
+    # reverse dz if necessary
+    z_is_negative = np.less(nanmean(z),0)
+    if z_is_negative == (dz < 0):
+        my_dz = dz
+    else:
+        my_dz = -dz
+    z_new = np.arange(z[0],z[-1],my_dz)
+    return (t_new,z_new)
+    
 def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=0):
     """
     Bins  input values in the 1D or 2D nparray 'values' into the bins with
@@ -2504,7 +2598,11 @@ def calc_bin_mean_n(xy,xy_bins,values,z=None,z_bins=None):
         bin_sum, e1 = np.histogram(xy,bins = xy_bins,weights = values)
         bin_n, e1 = np.histogram(xy,bins = xy_bins)
 
-    bin_mean = bin_sum/bin_n
+    bin_mean = bin_sum
+    valid=bin_n>0
+    bin_mean[valid] /= bin_n[valid]
+    bin_mean[~valid] = np.nan
+
     return (bin_mean, bin_n)
 
 def calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n):
@@ -2530,13 +2628,15 @@ def calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n):
         elif i > 0:
             sq_sums[i] += (values[n] - bin_mean[i])**2
 
-#    for n in range(np.size(xy)):
-#        if z_not_none:
-#            j = z_bin_num[n]-1
-#            print 'sum_sq bin_n mean sd',sq_sums[i,j],bin_n[i,j],bin_mean[i,j],np.sqrt(sq_sums[i,j]/bin_n[i,j])
+    #    for n in range(np.size(xy)):
+    #        if z_not_none:
+    #            j = z_bin_num[n]-1
+    #            print 'sum_sq bin_n mean sd',sq_sums[i,j],bin_n[i,j],bin_mean[i,j],np.sqrt(sq_sums[i,j]/bin_n[i,j])
 
-    return (np.sqrt(sq_sums/bin_n),xy_bin_num,z_bin_num)
-
+    valid=(bin_n>0)
+    sq_sums[valid] = np.sqrt(sq_sums[valid]/bin_n[valid])
+    sq_sums[~valid]=np.nan
+    return (sq_sums,xy_bin_num,z_bin_num)
 
 
 def prep_xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None):
@@ -2564,7 +2664,7 @@ def prep_xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None):
     if len(np.shape(nparray)) == 1:
         is_array = False
     elif z is None or z_new is None:
-        print 'Error - to regrid a 2D array, arguments z and z_new are required'
+        print('Error - to regrid a 2D array, arguments z and z_new are required')
         raise ValueError
     else:
         is_array = True       
@@ -2648,7 +2748,7 @@ def xy_interpolate(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='cubi
         prep_xy_regrid(nparray,xy,xy_new,z,z_new,pre_calcs)
 
     if kind not in griddata_kinds:
-        raise Exception,"Unknown regrid kind in xy_interpolate()"
+        raise Exception("Unknown regrid kind in xy_interpolate()")
     
     if is_array:
         valid = np.nonzero(~np.isnan(nparray))
@@ -2684,8 +2784,7 @@ def find_mask_from_vector(z,z_values,mask_area):
     elif mask_area == 'above':
         return np.less(z_array,z_values_array)
     else:
-        print "Input mask_area must be set to either 'above' or 'below'"
+        print("Input mask_area must be set to either 'above' or 'below'")
         raise ValueError
-        
-            
-    
+
+

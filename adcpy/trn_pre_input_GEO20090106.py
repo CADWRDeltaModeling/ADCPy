@@ -29,6 +29,8 @@ working_directory = r'Y:\temp\ADCP_2008\NDSOS_DLADCP.VelocityData\4thRelease\GEO
 #file_list = ['GEO4thRelease641r.000',
 #             'GEO4thRelease642r.000']
 file_list = None
+file_ext = r'r.000'
+file_type = r'ADCPRdiWorkhorseData'
 
 # Processing Options
 # -----------------------------------------------------------------------------
@@ -64,4 +66,4 @@ save_preprocessed_data_to_netcdf = True    # Switch to output results to netCDF-
 use_netcdf_data_compression = True      # Switch to use NetCDF 4 data compression to save disk space in data and results files.  {True or False}
 
 # Debug options
-debug_stop_after_n_transects = 10       # False, or number to limit return to
+debug_stop_after_n_transects = 16       # False, or number to limit return to

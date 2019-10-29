@@ -12,15 +12,16 @@ Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 import numpy as np
 import re,os
 #import netCDF4
-import rdradcp
-reload(rdradcp)
-import pynmea.streamer
-import cStringIO
-import adcpy_utilities as au
+from . import rdradcp
+#reload(rdradcp)
+from .pynmea import streamer
+#import io.StringIO as cStringIO
+import io
+from . import adcpy_utilities as au
 #import scipy.stats.stats as sp
 import scipy.stats.morestats as ssm
-import adcpy
-
+from . import adcpy
+from datetime import datetime
 
 class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
     """
@@ -57,39 +58,38 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
               if N, read the first N ensembles
         """        
         # set some defaults
-        nav_file=None
+        self.nav_file=None
         num_av=1
         nens=None
-        adcp_depth=None
-        for kwarg in self.kwarg_options:
-            if kwarg in kwargs:
-                exec("%s = kwargs[kwarg]"%kwarg)
-    
+        self.adcp_depth=None
+
+        for k, v in kwargs.items(): #kwarg_options:
+            if k in self.kwarg_options:
+                setattr(self,k,v)
+
         # set parameters passed to rdradcp
         self.rdradcp_num_av = num_av
         self.rdradcp_nens = nens
-        self.rdradcp_adcp_depth = adcp_depth
+        self.rdradcp_adcp_depth = self.adcp_depth
 
         if not os.path.exists(raw_file):
-            raise IOError, "Cannot find %s"%raw_file
+            raise IOError("Cannot find %s"%raw_file)
     
         self.raw_file = raw_file
 
-        if nav_file == 'auto':
-            nav_file = None
+        if self.nav_file == 'auto':
+            self.nav_file = None
             # NOTE: this will only find lowercase 'n' files:
             possible_nav_file = re.sub(r'r(\.\d+)$',r'n\1',raw_file)
             if possible_nav_file != raw_file and os.path.exists(possible_nav_file):
-                nav_file = possible_nav_file
+                self.nav_file = possible_nav_file
                 if not self.quiet:
-                    self.msg("found nav file %s"%nav_file)
+                    self.msg("found nav file %s"%self.nav_file)
             else:
-                nav_file = None
+                self.nav_file = None
     
-        if nav_file and not os.path.exists(nav_file):
-            raise IOError,"Cannot find %s"%nav_file
-
-        self.nav_file = nav_file
+        if self.nav_file and not os.path.exists(self.nav_file):
+            raise IOError("Cannot find %s"%self.nav_file)
 
         if self.nav_file:
             self.read_nav()
@@ -101,7 +101,7 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         """
         fp = open(self.nav_file)
         
-        nmea = pynmea.streamer.NMEAStream(fp)
+        nmea = streamer.NMEAStream(fp)
         
         self.ensemble_gps_indexes = [] # [ensemble #, index into gps_data]
         self.gps_data = [] # [ day_fraction, lat, lon] 
@@ -114,7 +114,8 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
             for sentence in next_data:
                 try:
                     if sentence.sen_type == 'GPGGA': # a fix
-                        if sentence.gps_qual < 1:
+                        gps_q = int(sentence.gps_qual)
+                        if gps_q < 1:
                             continue # not a valid fix.
                         lat_s = sentence.latitude
                         lon_s = sentence.longitude
@@ -141,10 +142,11 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
                         # output.
                         self.ensemble_gps_indexes.append( [int(sentence.ensemble),
                                                            len(self.gps_data)] )
-                except AttributeError,exc:
-                    print "While parsing NMEA: "
-                    print exc
-                    print "Ignoring this NMEA sentence"
+                #except (AttributeError,exc):
+                except(AttributeError):
+                    print("While parsing NMEA: ")
+                    #print(exc)
+                    print("Ignoring this NMEA sentence")
                     continue
                     
         self.ensemble_gps_indexes = np.array(self.ensemble_gps_indexes)
@@ -160,7 +162,7 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
             nens = self.rdradcp_nens
 
         if self.quiet: 
-            log_fp = cStringIO.StringIO()
+            log_fp = io.StringIO()
         else:
             log_fp = None
             
@@ -200,9 +202,9 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         if 'bt_vel' in ens_fields:
             self.bt_velocity = self.raw_adcp.bt_vel[:Ne]*1.0e-3 # mm/s -> m/s
             # problems w/ big spikes in bt -> not sure why
-            for j in range(0,1):
+            for j in range(0,2):
                 bt_vel = self.bt_velocity[:,j]
-                ii = np.greater(bt_vel,5.0) # identify where depth is > 5 m/s
+                ii = np.greater(abs(bt_vel),5.0) # identify where velocity is > 5 m/s
                 bt_vel[ii] = np.nan
                 bt_vel = au.interp_nans_1d(bt_vel) # interpolate over nans
                 self.bt_velocity[:,j] = bt_vel   
@@ -222,6 +224,20 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         if self.raw_adcp.longitude is not None and self.raw_adcp.latitude is not None:
             self.lonlat = np.array( [self.raw_adcp.longitude,
                                      self.raw_adcp.latitude] ).T[:Ne]
+        elif hasattr(self,'gps_data'):
+            if self.gps_data is not None:
+                lons = []
+                lats = []
+                gpsi = dict(zip(self.ensemble_gps_indexes[:,0],self.ensemble_gps_indexes[:,1]))
+                for ni in self.raw_adcp.number:
+                    if ni in gpsi:
+                        dayf,lat,lon = self.gps_data[gpsi[ni]]
+                    else:
+                        lat = np.nan
+                        lon = np.nan
+                    lons.append(lon)
+                    lats.append(lat)
+                self.lonlat = np.array([lons,lats]).T[:Ne]
 
         if 'heading' in ens_fields:
             self.heading = self.raw_adcp.heading[:Ne]
@@ -306,6 +322,10 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         
         return True
 
+    def split_by_ensemble(self,split_nums,extra_fields=[]):
+        return super(ADCPRdiWorkhorseData,self).split_by_ensemble(split_nums,
+            extra_fields=extra_fields+['heading','error_vel'])
+
     def write_nc_extra(self,grp,zlib=None):
         super(ADCPRdiWorkhorseData,self).write_nc_extra(grp,zlib)
 
@@ -334,10 +354,12 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
                 v = self.raw_adcp.config.__dict__[k]
                 try:
                     setattr(config,k,v)
-                except Exception,exc:
-                    print exc
-                    print "Skipping config attribute %s"%k
-            
+                except Exception as ex:
+                    print("Skipping config attribute %s"%k)
+                    template = "An exception of type {0} occurred. Arguments:\n{1!r}"
+                    message = template.format(type(ex).__name__, ex.args)
+                    print(message)
+
             (raw_n_ens,raw_n_bins) = np.shape(self.raw_adcp.bin_data)
             raw_n_ens_dim = raw_adcp_grp.createDimension('raw_n_ensembles',raw_n_ens)
             raw_n_bins_dim = raw_adcp_grp.createDimension('raw_n_bins',raw_n_bins)
@@ -360,7 +382,7 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
     def read_nc_extra(self,grp):           
         super(ADCPRdiWorkhorseData,self).read_nc_extra(grp)
 
-        print 'Doing read_nc in ADCPRdiWorkhorseData...'
+        print('Doing read_nc in ADCPRdiWorkhorseData...')
 
         # read optional base variables
         if 'error_vel' in grp.variables:
@@ -383,6 +405,19 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
             if 'bin_data' in raw_grp.variables:
                 self.raw_adcp.bin_data = raw_grp.variables['bin_data'][...]
 
+
+    def append_ensembles_extra(self,a):
+        super(ADCPRdiWorkhorseData,self).append_ensembles_extra(a)
+        if self.heading is not None:
+            self.heading = au.concatenate_array_w_fill(self.heading,
+                                                  (self.n_ensembles,),
+                                                  a.heading,
+                                                  (a.n_ensembles,))
+        if self.error_vel is not None:
+            self.error_vel = au.concatenate_array_w_fill(self.error_vel,
+                                                  (self.n_ensembles,self.n_bins),
+                                                  a.error_vel,
+                                                  (a.n_ensembles,a.n_bins))
 
     def average_ensembles(self,ens_to_avg):
         """ Extra variables must be averaged for this subclass

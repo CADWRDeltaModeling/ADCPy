@@ -10,15 +10,22 @@ This code is open source, and defined by the included MIT Copyright License
 Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 2014-09 - First Release; blsaenz, esatel
 """
+from __future__ import print_function
+
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
+# This generates verbose warnings when not imported as the first item during
+# a session.  Probably this is not the right place to configured the plotting
+# backend.
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-import scipy.stats.stats as sp
+import matplotlib.animation as animation
 from matplotlib.dates import num2date#,date2num,
+import scipy.stats.stats as sp
 
-import adcpy
-from adcpy_recipes import calc_transect_flows_from_uniform_velocity_grid
+from . import adcpy
+from . import adcpy_utilities as util
+from .adcpy_recipes import calc_transect_flows_from_uniform_velocity_grid
 
 U_str = 'u'
 V_str = 'v'
@@ -90,31 +97,24 @@ class IPanel(object):
         elif self.my_axes is not None:
             ax = plt.sca(self.my_axes)
         else:
-            ax = plt.gca()                
+            ax = plt.gca()
+        kwargs={}
         if self.minv is not None:
-            mnv = ",vmin=self.minv"
-        else:
-            mnv = ""
-        if self.minv is not None:
-            mxv = ",vmax=self.maxv"
-        else:
-            mxv = ""
+            kwargs['vmin']=self.minv
+        if self.maxv is not None:
+            kwargs['vmax']=self.maxv
         if self.use_pcolormesh:
             vel_masked = np.ma.array(self.velocity,mask=np.isnan(self.velocity))
+            args=[vel_masked.T]
+            kwargs['shading']=self.shading
             if self.x is not None and self.y is not None:
-                xy = "self.x,self.y,"
-            else:            
-                xy = ""
-            plot_cmd = "pc=plt.pcolormesh(%svel_masked.T,shading=self.shading%s%s)"%(xy,mnv,mxv)
-            exec(plot_cmd)
+                args=[self.x,self.y] + args
+            pc=plt.pcolormesh(*args,**kwargs)
         else:
             if self.x is not None and self.y is not None:
-                xy = ",extent=[self.x[0],self.x[-1],self.y[-1],self.y[0]]"
-            else:            
-                xy = ""
-            plot_cmd = "pc=plt.imshow(self.velocity.T%s,interpolation=self.interpolation%s%s)"%(xy,mnv,mxv)
+                kwargs['extent']=[self.x[0],self.x[-1],self.y[-1],self.y[0]]
+            pc=plt.imshow(self.velocity.T,interpolation=self.interpolation,**kwargs)
 
-        exec(plot_cmd)
         if self.title is not None:
             plt.title(self.title)
         plt.axis('tight')
@@ -140,39 +140,43 @@ class IPanel(object):
             ax.xaxis_date()
             plt.gcf().autofmt_xdate()
         elif self.xy_is_lonlat:
-            ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%7.4f'))       
+            ax.yaxis.set_major_formatter(plt.FormatStrFormatter('%7.4f'))
             ax.xaxis.set_major_formatter(plt.FormatStrFormatter('%7.4f'))
             plt.ylabel('Latitude [degrees N]')
-            plt.xlabel('Longitude [degrees E]')            
+            plt.xlabel('Longitude [degrees E]')
         if self.xlabel is not None:
             plt.xlabel(self.xlabel)
         if self.ylabel is not None:
             plt.ylabel(self.ylabel)
         plt.colorbar(pc, use_gridspec=True)
+        return pc
 
 
 class QPanel(object):
     """
-    This object stores and plots a 1D or 2D velocity map as a quiver plot.  Any 
-    of the data fields (kwarg_options) may be specificed as kwargs during 
+    This object stores and plots a 1D or 2D velocity map as a quiver plot.  Any
+    of the data fields (kwarg_options) may be specificed as kwargs during
     initialization.  At minimum QPanel requires 'velocity' to be set.
     """
     kwarg_options = ['u_vecs',
                      'v_vecs',
-                     'velocity',          
+                     'velocity',
                      'title',
                      'units',
                      'xlabel',
                      'ylabel',
                      'x',
                      'y',
-                     'v_scale',  # make arrow bigger or smaller, relatively speaking, daults to 1
+                     'v_scale',  # make arrow bigger or smaller, relatively speaking, defaults to 1
                      'xpand',    # fractional buffer around xy extent, to capture arrow ends
                      'x_is_mtime',
                      'arrow_color',
+                     'lw',
+                     'ec',
                      'xy_is_lonlat',
                      'equal_axes',
-                     'my_axes']
+                     'my_axes',
+                     'plot_calcs']
 
     def __init__(self,**kwargs):
         
@@ -194,7 +198,50 @@ class QPanel(object):
             if kwarg in kwargs:
                 exec("self.%s = kwargs[kwarg]"%kwarg)
 
-    def plot(self,ax=None):
+    def get_plot_calcs(self):
+        """ Returns various parameters generated from self that are required
+        for plotting.
+        Returns:
+            u_indices = plotting indices to velocity data in u-dimension
+            v_indices = plotting indices to velocity data in v-dimension
+            vScale = internal scaling number for quiver arrows
+            qk_value = scale number used to generate quiver legend
+            x1,x2,y1,y2 = plot axes limits
+        """
+        dims = np.shape(self.velocity)
+        u_reduction = max(1,int(dims[0]/self.u_vecs))
+        u_indices = np.arange(0,dims[0],u_reduction)
+        v_mag = np.sqrt(self.velocity[...,0]**2 + self.velocity[...,1]**2)
+        if len(dims) == 2:
+            vScale = np.nanmax(v_mag[u_indices])
+            v_indices = None
+        elif len(dims) == 3:
+            v_reduction = max(1,int(dims[1]/self.v_vecs))
+            v_indices = np.arange(0,dims[1],v_reduction)
+            v_mag = v_mag[u_indices,:]
+            v_mag = v_mag[:,v_indices]
+            vScale = np.nanmax(np.nanmax(v_mag))
+        vScale = max(vScale,0.126)
+        qk_value = np.round(vScale*4)/4
+
+        if self.xpand is not None:
+            xpand = self.xpand
+            xspan = np.max(self.x) - np.min(self.x)
+            yspan = np.max(self.y) - np.min(self.y)
+            xspan = max(xspan,yspan)
+            yspan = xspan                        
+            x1 = np.min(self.x) - xpand*xspan
+            x2 = np.max(self.x) + xpand*xspan          
+            y1 = np.min(self.y) - xpand*yspan
+            y2 = np.max(self.y) + xpand*yspan
+        else:
+            x1=x2=y1=y2 = None
+
+        return (u_indices,v_indices,vScale,qk_value,x1,x2,y1,y2)            
+        
+       
+
+    def plot(self,ax=None,use_plot_calcs=False):
         """
         Plots the data in QPanel onto the axis ax, or if ax is None,
         onto self.my_axes.
@@ -210,53 +257,43 @@ class QPanel(object):
             ax = plt.sca(self.my_axes)
         else:
             ax = plt.gca()
+            
+        if not use_plot_calcs or self.plot_calcs is None:
+            self.plot_calcs = self.get_plot_calcs()
+        (u_indices,v_indices,vScale,qk_value,x1,x2,y1,y2) = self.plot_calcs
+        # print 'vScale,qk_value',vScale,qk_value
         dims = np.shape(self.velocity)
-        u_reduction = max(1,int(dims[0]/self.u_vecs))
-        u_indices = np.arange(0,dims[0],u_reduction)
-        v_mag = np.sqrt(self.velocity[...,0]**2 + self.velocity[...,1]**2)
         if len(dims) == 2:
-            vScale = np.nanmax(v_mag[u_indices])
             local_vel = self.velocity[u_indices,...]
             local_u = local_vel[:,0]
             local_v = local_vel[:,1]
             local_x = self.x[u_indices]
             local_y = self.y[u_indices]
         elif len(dims) == 3:
-            v_reduction = max(1,int(dims[1]/self.v_vecs))
-            v_indices = np.arange(0,dims[1],v_reduction)
-            v_mag = v_mag[u_indices,:]
-            v_mag = v_mag[:,v_indices]
-            vScale = np.nanmax(np.nanmax(v_mag))
             local_vel = self.velocity[u_indices,:,:]
             local_vel = local_vel[:,v_indices,:]
             local_u = local_vel[:,:,0].T
             local_v = local_vel[:,:,1].T
             local_x,local_y = np.meshgrid(self.x[u_indices],self.y[v_indices])
-        vScale = max(vScale,0.126)
-        qk_value = np.round(vScale*4)/4
         
         Q = plt.quiver(local_x,local_y,
                    local_u,local_v,
-                   width=0.0015*self.v_scale,
-                   headlength=10.0,
-                   headwidth=7.0,
-                   scale = 10.0*vScale/self.v_scale,   #scale = 0.005,
+#                   width=0.0015*self.v_scale,
+                   width=0.0030*self.v_scale,
+                   headlength=6.0,
+                   headwidth=4.0,
+                   scale = 5.0*vScale/self.v_scale,   #scale = 0.005,
                    color = self.arrow_color,
-                   scale_units = 'width')
+                   scale_units = 'width',
+                   lw=self.lw,
+                   ec=self.ec)
         if self.equal_axes:
             ax.set_aspect('equal')
         if self.xpand is not None:
-            xpand = self.xpand
-            xspan = np.max(self.x) - np.min(self.x)
-            yspan = np.max(self.y) - np.min(self.y)
-
-            xspan = max(xspan,yspan)
-            yspan = xspan            
-            
-            x1 = np.min(self.x) - xpand*xspan; x2 = np.max(self.x) + xpand*xspan          
-            plt.xlim([x1, x2])
-            y1 = np.min(self.y) - xpand*yspan; y2 = np.max(self.y) + xpand*yspan          
-            plt.ylim([y1, y2])           
+            if x1 is not None and x2 is not None:
+                plt.xlim([x1, x2])
+            if y1 is not None and y2 is not None:
+                plt.ylim([y1, y2])
         qk = plt.quiverkey(Q, 0.5, 0.08, qk_value, 
                        r'%3.2f '%qk_value + r'$ \frac{m}{s}$', labelpos='W',)
 
@@ -275,9 +312,9 @@ class QPanel(object):
         if self.ylabel is not None:
             plt.ylabel(self.ylabel)
         #plt.autoscale(True)
-            
-
-
+        return (Q,qk)
+    
+    
 def get_fig(fig):
     """
     Returns a new figure if figure is None, otherwise passes returns fig.
@@ -329,17 +366,21 @@ def find_array_value_bounds(nparray,resolution):
         minv = minimum bound value of nparray
         maxv = maximum bound value of nparray
     """
-    inv = 1.0/resolution
+    if resolution is None:
+        my_res = 0.1
+    else:
+        my_res = resolution
+    inv = 1.0/my_res
     mtest = np.floor(nparray*inv)
-    minv = np.nanmin(np.nanmin(mtest))*resolution
-    mtest = np.ceil(nparray*inv)    
-    maxv = np.nanmax(np.nanmax(mtest))*resolution
+    minv = np.nanmin(np.nanmin(mtest))*my_res
+    mtest = np.ceil(nparray*inv)
+    maxv = np.nanmax(np.nanmax(mtest))*my_res
     return (minv,maxv)
-    
+
 
 def find_plot_min_max_from_velocity(velocity_2d,res=None,equal_res_about_zero=True):
     """
-    Finds bounds as in find_array_value_bounds(), then optinoally 
+    Finds bounds as in find_array_value_bounds(), then optinoally
     equates then +/- from zero.  If res is None, returns None
     Inputs:
         nparray = array of numbers for which bounds are needed [2D numpy array]
@@ -348,15 +389,11 @@ def find_plot_min_max_from_velocity(velocity_2d,res=None,equal_res_about_zero=Tr
     Returns:
         minv =- minimum bound value of nparray, or None
         maxv = maximum bound value of nparray, or None
-    """    
-    if res is not None:
-        minv, maxv = find_array_value_bounds(velocity_2d,res)
-        if equal_res_about_zero:
-            maxv = np.max(np.abs(minv),np.abs(minv))
-            minv = -1.0*maxv
-    else:
-        minv = None
-        maxv = None
+    """
+    minv, maxv = find_array_value_bounds(velocity_2d,res)
+    if equal_res_about_zero:
+        maxv = max(np.abs(minv),np.abs(maxv))
+        minv = -1.0*maxv
     return (minv,maxv)
 
 def get_basic_velocity_panel(velocity_2d,res=None,equal_res_about_zero=True):
@@ -367,7 +404,7 @@ def get_basic_velocity_panel(velocity_2d,res=None,equal_res_about_zero=True):
         res = number of which the bounds will be rounded up toward
         equal_res_about_zero = toggle to switch [True/False]
     Returns:
-        IPanel onject 
+        IPanel onject
     """
     minv, maxv = find_plot_min_max_from_velocity(velocity_2d,res,
                                                  equal_res_about_zero)
@@ -380,6 +417,7 @@ def get_basic_velocity_panel(velocity_2d,res=None,equal_res_about_zero=True):
     
 
 def plot_uvw_velocity_array(velocity,fig=None,title=None,ures=None,vres=None,wres=None,
+                            vmin=None,vmax=None,
                             equal_res_about_zero=True):
     """
     Generates a figure with three panels showing U,V,W velocity from a single 3D
@@ -402,6 +440,10 @@ def plot_uvw_velocity_array(velocity,fig=None,title=None,ures=None,vres=None,wre
         panels.append(get_basic_velocity_panel(velocity[:,:,i],res=res[i],equal_res_about_zero=False))
         panels[-1].title = "%s%s Velocity [m/s]"%(title_str,vel_strs[i])
         panels[-1].use_pcolormesh = False
+        if vmin is not None:
+            panels[-1].minv = vmin
+        if vmax is not None:
+            panels[-1].minv = vmax        
     fig = plot_vertical_panels(panels)
     plt.tight_layout()
     return fig
@@ -435,13 +477,13 @@ def plot_secondary_circulation(adcp,u_vecs,v_vecs,fig=None,title=None):
                       v_scale = 1.5,
                       u_vecs = u_vecs,
                       v_vecs = v_vecs,
-                      arrow_color = 'k',
+                      arrow_color = 'w',
                       units = 'm/s')
     stream_wise.plot()
     secondary.plot()
     if title is not None:
         plt.title(title)
-    return fig
+    return (stream_wise,secondary,fig)
     
 def plot_secondary_circulation_over_streamwise(adcp,u_vecs,v_vecs,fig=None,title=None):
     """
@@ -471,7 +513,7 @@ def plot_secondary_circulation_over_streamwise(adcp,u_vecs,v_vecs,fig=None,title
                       v_scale = 1.5,
                       u_vecs = u_vecs,
                       v_vecs = v_vecs,
-                      arrow_color = 'k',
+                      arrow_color = 'w',
                       units = 'm/s')
     stream_wise.plot()
     secondary.plot()
@@ -495,8 +537,8 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
     dude = np.zeros((adcp.n_ensembles,2),np.float64)
     velocity = adcp.get_unrotated_velocity()
     # this doesn't factor in depth, may integrate bad values if the have not been filtered into NaNs somehow
-    dude[:,0] = sp.nanmean(velocity[:,:,0],axis=1)
-    dude[:,1] = sp.nanmean(velocity[:,:,1],axis=1)
+    dude[:,0] = util.nanmean(velocity[:,:,0],axis=1)
+    dude[:,1] = util.nanmean(velocity[:,:,1],axis=1)
     vectors = QPanel(velocity = dude,
                       u_vecs = n_vectors,
                       arrow_color = 'k',
@@ -516,6 +558,44 @@ def plot_ensemble_mean_vectors(adcp,fig=None,title=None,n_vectors=50,return_pane
         vectors.x = adcp.mtime
         vectors.y = np.zeros(np.size(vectors.x))
         vectors.x_is_mtime = True
+    if return_panel:
+        return vectors
+    else:                  
+        fig = get_fig(fig)
+        vectors.plot()
+        plt.tight_layout()
+        return fig
+
+
+def plot_ensemble_uv(adcp,ens_num,fig=None,title=None,n_vectors=50,return_panel=False):
+    """
+    Generates a QPanel, plotting mean uv velocity vectors against 
+    elevation (self.bin_center_elevation).
+    Inputs:
+        adcp = ADCPData object
+        ens_num = ensemble index number to plot
+        fig = input figure number [integer or None]
+        title = figure title text [string or None]
+        n_vectors = desired number of vectors [integer]
+        return_panel = optinally return the QPanel instead of the figure
+    Returns:
+        fig = matplotlib figure object, or
+        vectors = QPanel object
+    """
+    dude = np.zeros((adcp.n_bins,2),np.float64)
+    velocity = adcp.get_unrotated_velocity()
+    # this doesn't factor in depth, may integrate bad values if the have not been filtered into NaNs somehow
+    dude[:,0] = velocity[ens_num,:,0]
+    dude[:,1] = velocity[ens_num,:,1]
+    vectors = QPanel(velocity = dude,
+                      u_vecs = n_vectors,
+                      arrow_color = 'k',
+                      title = title,
+                      units = 'm/s')
+    vectors.y = -1.0 * adcp.bin_center_elevation
+    vectors.x = np.zeros(np.size(adcp.bin_center_elevation))
+    vectors.xlabel = 'm'
+    vectors.equal_axes = True
     if return_panel:
         return vectors
     else:                  
@@ -572,11 +652,11 @@ def plot_xy_line(adcp,fig=None,title=None,label=None,use_stars_at_xy_locations=T
         x = adcp.lonlat[:,0]
         y = adcp.lonlat[:,1]
     else:
-        raise Exception,"plot_xy_line(): no position data in ADCPData object"
+        raise Exception("plot_xy_line(): no position data in ADCPData object")
     if use_stars_at_xy_locations:
-        plt.plot(x,y,marker='*',label=label)
+        plt.plot(x,y,marker='*',label=label,picker=True)
     else: 
-        plt.plot(x,y,label=label)
+        plt.plot(x,y,label=label,picker=True)
     if title is not None:
         plt.title(title,y=1.06)
     formatter = matplotlib.ticker.ScalarFormatter(useOffset=False)
@@ -586,7 +666,9 @@ def plot_xy_line(adcp,fig=None,title=None,label=None,use_stars_at_xy_locations=T
     
 
 def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wres=None,
-                            equal_res_about_zero=True,return_panels=False):
+                      vmin=None,vmax=None,
+                      equal_res_about_zero=True,return_panels=False,match_scales=True,
+                      xy_line=None,by_ensembles=False):
     """
     Produces a quick plot of the adcp ensemble x-y locations, from an ADCPData
     object.
@@ -595,44 +677,76 @@ def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wre
         fig = input figure number [integer or None]
         title = figure title text [string or None]
         use_stars_at_xy_locations = plots * at actual ensemble locations [True/False]
+        xy_line = [[ x0,y0], [x1,y1]] for projection onto transect, or None to fit.
     Returns:
         fig = matplotlib figure object
-    """        
+    """
     panels = []
     dx = None
     dt = None
-    res = [ures, vres, wres]
+    default_res=0.1
+    # PY3k doesn't like comparing None
+    res = [ures or default_res,
+           vres or default_res,
+           wres or default_res]
+    if match_scales:
+        res = min(res)
+        res = [res, res, res]
+        minv,maxv = (0.0,0.0)
+
     if adcp.xy is not None:
         if np.size(adcp.xy[:,0]) == adcp.n_ensembles:
-            xd,yd,dx,xy_line = adcpy.util.find_projection_distances(adcp.xy)
+            xd,yd,dx,xy_line = adcpy.util.find_projection_distances(adcp.xy,pline=xy_line)
     if adcp.mtime is not None:
         if np.size(adcp.mtime) == adcp.n_ensembles:
             dt = adcp.mtime
     ax = adcpy.util.get_axis_num_from_str(uvw)
-    
+
     for i in ax:
         if i == ax[0] and title is not None:
             title_str = title + " - "
         else:
             title_str = ""
-        panels.append(get_basic_velocity_panel(adcp.velocity[:,:,i],res=res[i]))
+        panels.append(get_basic_velocity_panel(adcp.velocity[:,:,i],res=res[i],
+                                               equal_res_about_zero=equal_res_about_zero))
+        if match_scales:
+            minv = min(minv,panels[-1].minv)
+            maxv = max(maxv,panels[-1].maxv)
+
         panels[-1].title = "%s%s Velocity [m/s]"%(title_str,vel_strs[i])
-        if dx is not None:
+        if by_ensembles is True:
+            # plotting velocity ensembles vs time
+            panels[-1].y =  adcp.bin_center_elevation
+            panels[-1].use_pcolormesh = False
+        elif dx is not None:
             # plotting velocity projected along a line
             panels[-1].x = dx
-            panels[-1].xlabel = 'm'                
-            panels[-1].ylabel = 'm'                
+            panels[-1].xlabel = 'm'
+            panels[-1].ylabel = 'm'
             panels[-1].y = adcp.bin_center_elevation
         elif dt is not None:
             # plotting velocity ensembles vs time
             panels[-1].x = dt
             panels[-1].x_is_mtime = True
             panels[-1].y =  adcp.bin_center_elevation
-            panels[-1].ylabel = 'm'                               
-            panels[-1].use_pcolormesh = False
+            panels[-1].ylabel = 'm'
+            #panels[-1].use_pcolormesh = False
         else:
             # super basic plot
             panels[-1].use_pcolormesh = False
+
+    if match_scales:
+        for p in panels:
+            p.minv = minv
+            p.maxv = maxv
+
+    if vmin is not None:
+        for p in panels:
+            p.minv = vmin
+    if vmax is not None:
+        for p in panels:
+            p.maxv = vmax
+
     
     if return_panels:
         return panels
@@ -641,7 +755,8 @@ def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wre
         return fig
 
 
-def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flows=False):
+def plot_flow_summary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flows=False,
+                      xy_line=None):
     """
     Plots projected mean flow vectors, U and V velocity profiles, and 
     associated text data on a single plot.
@@ -652,29 +767,35 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
         ures,vres = numbers by which the velocity bounds will be rounded up toward [number or None]
         use_grid_flows = calculates flows using crossproduct flow (if available) 
           [True] or by weighted summing of grid cells [False]   
+        xy_line = [[x0,y0],[x1,y1]] line for projection to 2D.  If None, use adcp.xy_line.  If 
+          'calc' or None and adcpy.xy_line is also None, then calculate.
     Returns: 
         fig = matplotlib figure object
     """
     
     if adcp.xy is None:            
-        ValueError('Cannot plot summary without projected data.')
-        raise
-    if fig is None:
-        fig = plt.figure(fig,figsize=(8,10.5))
-    else:
-        plt.clf()
+        raise ValueError('Cannot plot summary without projected data.')
+
+    if not isinstance(fig,plt.Figure):
+        fig = plt.figure(num=fig,figsize=(8,10.5))
+    fig.clf()
         
     vectors = plot_ensemble_mean_vectors(adcp,n_vectors=30,return_panel=True)
     vectors.x = vectors.x - np.min(vectors.x)
     vectors.y = vectors.y - np.min(vectors.y)
+    if xy_line is None:
+        xy_line=adcp.xy_line # may still be None.
+    elif xy_line is 'calc':
+        xy_line=None # force recalc
     u_panel,v_panel = plot_uvw_velocity(adcp,uvw='uv',fig=fig,ures=ures,
-                                        vres=vres,return_panels=True)
+                                        vres=vres,return_panels=True,
+                                        xy_line=xy_line)
     
     u_panel.chop_off_nans = True
     u_panel.xlabel = None
     v_panel.chop_off_nans = True
 
-    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy)           
+    xd,yd,dd,xy_line = adcpy.util.find_projection_distances(adcp.xy,pline=xy_line)
 
     plt.subplot(221)
     vectors.plot()
@@ -684,19 +805,13 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
     v_panel.plot()  
     plt.tight_layout()
 
+    txt_lines=[]
+    
     if title is not None:
-        plt.text(0.55,0.933,title,
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
+        txt_lines.append(title)
    
     if adcp.mtime is not None:
-        plt.text(0.55,0.9,'Start of Data: %s'%( num2date(adcp.mtime[0]).strftime('%c')),
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
+        txt_lines.append( 'Start of Data: %s'%( num2date(adcp.mtime[0]).strftime('%c')) )
 
     if adcp.rotation_angle is not None:
         if np.size(adcp.rotation_angle) > 1:
@@ -705,77 +820,81 @@ def plot_flow_summmary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flo
             rot_str = '%5.2f degrees'%(adcp.rotation_angle*180.0/np.pi)
     else:
         rot_str = 'None'
-    plt.text(0.55,0.866,'Streawise Rotation: %s'%rot_str,
-    horizontalalignment='left',
-    verticalalignment='center',
-    fontsize=10,
-    transform=fig.transFigure)
+    txt_lines.append('Streawise Rotation: %s'%rot_str)
    
-   
-    x1 = min(adcp.xy[:,0][np.nonzero(~np.isnan(adcp.xy[:,0]))])
-    y1 = min(adcp.xy[:,1][np.nonzero(~np.isnan(adcp.xy[:,1]))])
+    x1 = np.nanmin(adcp.xy[:,0]) # min(adcp.xy[:,0][np.nonzero(~np.isnan(adcp.xy[:,0]))])
+    y1 = np.nanmin(adcp.xy[:,1]) # min(adcp.xy[:,1][np.nonzero(~np.isnan(adcp.xy[:,1]))])
     
     loc_string = 'Plot origin (%s) = (%i,%i)'%(adcp.xy_srs,
                                                int(x1),
                                                int(y1))
-    
-    plt.text(0.55,0.833,loc_string,
-    horizontalalignment='left',
-    verticalalignment='center',
-    fontsize=10,
-    transform = fig.transFigure)
+    txt_lines.append(loc_string)
     
     if not use_grid_flows and 'calc_crossproduct_flow' in dir(adcp):    
-    
         wrums,wru,tsa,tcsa = adcp.calc_crossproduct_flow()
-        
-        plt.text(0.55,0.8,'Mean cross-product velocity [m/s]: %3.2f'%wrums,
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
-        
-        plt.text(0.55,0.766,'Mean cross-product flow [m^3/s]: %12.2f'%wru,
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
 
+        txt_lines.append('Mean cross-product velocity [m/s]: %3.2f'%wrums)
+
+        txt_lines.append('Mean cross-product flow [m^3/s]: %12.2f'%wru)
     else:
-        
         (scalar_mean_vel, depth_averaged_vel, total_flow, total_survey_area) = \
-            calc_transect_flows_from_uniform_velocity_grid(adcp,use_grid_only=True)        
-        
-        plt.text(0.55,0.8,'Mean U velocity [m/s]: %3.2f'%scalar_mean_vel[0],
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
-        
-        plt.text(0.55,0.766,'Mean V velocity [m/s]: %3.2f'%scalar_mean_vel[1],
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
-        
-        plt.text(0.55,0.733,'Mean U flow [m^3/s]: %12.2f'%total_flow[0],
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
+            calc_transect_flows_from_uniform_velocity_grid(adcp,use_grid_only=True,xy_line=xy_line)
 
-        plt.text(0.55,0.7,'Mean V flow [m^3/s]: %12.2f'%total_flow[1],
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
+        txt_lines.append('Mean U velocity [m/s]: %3.2f'%scalar_mean_vel[0])
+
+        txt_lines.append('Mean V velocity [m/s]: %3.2f'%scalar_mean_vel[1])
+
+        txt_lines.append('Mean U flow [m^3/s]: %12.2f'%total_flow[0])
+
+        txt_lines.append('Mean V flow [m^3/s]: %12.2f'%total_flow[1])
 
     if adcp.source is not None:
-        plt.text(0.55,0.633,'Sources:\n%s'%adcp.source,
-        horizontalalignment='left',
-        verticalalignment='center',
-        fontsize=10,
-        transform = fig.transFigure)
+        txt_lines.append('Sources:\n%s'%adcp.source)
+
+    plt.text(0.45,0.98,"\n".join(txt_lines),
+             ha='left',va='top',fontsize=10,transform=fig.transFigure)
        
     return fig
+
+plot_flow_summmary=plot_flow_summary # backwards compat for misspelling
+
+def animate_plot_ensemble_uv(a,frames,interval=1000,span=None,fig=None,title=None,n_vectors=50):
+    """
+    Generates a matplotlib animation object, where frames are quiver plots of
+    uv velocities vs. elevation.
+    Inputs:
+        a = ADCPData object
+        frames = number of frames in animation
+        internal = time between frames when showing (ms)
+        span = number of ensembles to span between frames (integer),  If None,
+        span is calulated by dividing the number ensembles by the number of 
+        frames to arrive at even spacing of frames across data.
+        fig = input figure number [integer or None]
+        title = figure title text [string or None]
+        n_vectors = desired number of vectors [integer]
+    Returns:
+        ani = matplotlib.animation.FuncAnimation object 
+    """
+
+    if span is None:
+        span = min(1,int(a.n_ensembles/frames))
+    stop = span*frames    
+    ens_nums = range(0,stop,span)
+    print(a.n_ensembles, frames, span)
+    print('ens_nums: ',ens_nums)
+
+    vec_frame = plot_ensemble_uv(a,ens_nums[0],fig=fig,title=title,n_vectors=n_vectors,return_panel=True)
+    vec_frame.v_scale = 2.0
+    velocity = a.get_unrotated_velocity()
+
+    def update_plot(i,ens_nums,velocity,vec_frame):
+        print('frame #',i)
+        plt.clf()
+        vec_frame.velocity[:,0] = velocity[ens_nums[i],:,0]
+        vec_frame.velocity[:,1] = velocity[ens_nums[i],:,1]
+        vec_frame.plot(use_plot_calcs=True)
+
+    fig_handle = get_fig(fig)
+    ani = animation.FuncAnimation(fig_handle,update_plot,frames,fargs=(ens_nums,velocity,vec_frame),interval=interval)
+    return ani
 

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Production example script that averages repeated tranects, resolving and visualizing secondary circulation
 Driver script that is designed to average repeated ADCP transect observations
-in an effort of reduce measurement error and better resolve non-steamwise and 
+in an effort of reduce measurement error and better resolve non-streamwise 
 velocities and secondary circulation features.  A summary of script functions:
     1) Assess an input directory for ADCP observations (raw files) that match 
        in space and time.
@@ -238,7 +238,5 @@ def main():
 
 # run myself
 if __name__ == "__main__":
-
-    #transect_average('trn_pre_input_GEO20090106.py')
     main()
 

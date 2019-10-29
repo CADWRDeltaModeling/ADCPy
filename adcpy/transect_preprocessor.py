@@ -45,6 +45,8 @@ def transect_preprocessor(option_file=None):
     
     See the default options file 'transect_preprocessor_input.py' for the 
     input options.
+    Optionally only selects files of type 'file_ext'; if using raw files
+    'file_type' must be supplied to instruct the open_adcp routine.
     """
     np.seterr(all='ignore')
     
@@ -62,22 +64,37 @@ def transect_preprocessor(option_file=None):
         print "Could not load options file: %s"%option_file
         raise
 
+    if file_ext is None:
+        file_ext = 'nc'
+    if file_ext != 'nc':
+        if file_type is None:
+            print "file_type must be supplied when opening raw ADCP files"
+            raise ValueError
+
+    if '.' in file_ext:
+        glob_str = r'*%s'%file_ext
+        my_file_ext = '.%s'%file_ext
+    else:
+        glob_str = '*.%s'%file_ext
+        my_file_ext = file_ext
+
     if os.path.exists(working_directory):
         if (os.path.isdir(working_directory)):
             if file_list is not None:
                 data_files = []
                 for f in file_list:
                     fileName, fileExtension = os.path.splitext(f)
-                    if (('R.000' in f and fileExtension == '.000') or
-                        ('r.000' in f and fileExtension == '.000')):
+#                    if (('R.000' in f and fileExtension == '.000') or
+#                        ('r.000' in f and fileExtension == '.000')):
+                    if (my_file_ext in fileExtension):
                         data_files.append(os.path.join(working_directory,f))
-                    elif fileExtension == '.nc':
-                        data_files.append(os.path.join(working_directory,f))
+#                    elif fileExtension == '.nc':
+#                        data_files.append(os.path.join(working_directory,f))
                     else:
-                        print "Filename '%s' does not appear to be a valid raw (*r.000) or netcdf (*.nc) file - skipping."%f
+                        print "Skipping '%s' (no match with %s"%(f,glob_str)
             else:
-                data_files = glob.glob(os.path.join(working_directory,'*[rR].000'))
-                data_files += glob.glob(os.path.join(working_directory,'*.nc'))            
+#                data_files = glob.glob(os.path.join(working_directory,'*[rR].000'))
+                data_files = glob.glob(os.path.join(working_directory,glob_str))
             data_path = working_directory
         else:
             print "Could not open working_directory '%s' - exiting."%working_directory
@@ -104,11 +121,14 @@ def transect_preprocessor(option_file=None):
         for data_file in data_files:
             path, fname = os.path.split(data_file)
             
-#            try:
-            a = adcpy.open_adcp(data_file,
-                            file_type="ADCPRdiWorkhorseData",
-                            num_av=1,
-                            adcp_depth=adcp_depth)
+            if file_type == 'ADCPRdiWorkhorseData':
+                a = adcpy.open_adcp(data_file,
+                                file_type=file_type,
+                                num_av=1,
+                                adcp_depth=adcp_depth)
+            else:
+                a = adcpy.open_adcp(data_file,
+                                file_type=file_type)               
             m1,h1,bt1,xy1 = a.copy_head_correct_vars(xy_srs=xy_projection)
             
             if reference_heading is None:
@@ -169,16 +189,19 @@ def transect_preprocessor(option_file=None):
     # begin cycling/processing input files 
     adcp_preprocessed = []
     for data_file in data_files:    
- #       try:
-        a = adcpy.open_adcp(data_file,
-                            file_type='ADCPRdiWorkhorseData',
+        if file_type == 'ADCPRdiWorkhorseData':
+            a = adcpy.open_adcp(data_file,
+                            file_type=file_type,
                             num_av=1,
                             adcp_depth=adcp_depth)
+        else:
+             a = adcpy.open_adcp(data_file,
+                            file_type=file_type)               
         path, fname = os.path.split(data_file)
         fname, ext = os.path.splitext(fname)
         outname = os.path.join(outpath,fname)
         
-        print 'Processing data_file:', outname
+        print 'Processing data_file:', fname
         
         if save_raw_data_to_netcdf:
             fname = outname + '.nc'
