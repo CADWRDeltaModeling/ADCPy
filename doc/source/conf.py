@@ -30,9 +30,7 @@ import os
 # ones.
 extensions = [
           'matplotlib.sphinxext.mathmpl',
-          'matplotlib.sphinxext.only_directives',
           'matplotlib.sphinxext.plot_directive',
-          'matplotlib.sphinxext.ipython_directive',
           'sphinx.ext.intersphinx',
           'sphinx.ext.autodoc',
           'sphinx.ext.doctest','numpydoc',
@@ -43,7 +41,7 @@ extensions = [
           #'numpydoc']
 
 autodoc_member_order = 'alphabetical'
-          
+
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
