@@ -26,6 +26,9 @@ import scipy.stats.stats as sp
 from . import adcpy
 from . import adcpy_utilities as util
 from .adcpy_recipes import calc_transect_flows_from_uniform_velocity_grid
+#import adcpy
+#import adcpy_utilities as util
+#from adcpy_recipes import calc_transect_flows_from_uniform_velocity_grid
 
 U_str = 'u'
 V_str = 'v'
@@ -286,7 +289,7 @@ class QPanel(object):
                    color = self.arrow_color,
                    scale_units = 'width',
                    lw=self.lw,
-                   ec=self.ec)
+                   edgecolor=self.ec)
         if self.equal_axes:
             ax.set_aspect('equal')
         if self.xpand is not None:
@@ -330,7 +333,7 @@ def get_fig(fig):
 
 def plot_vertical_panels(vpanels,fig=None,title=None):
     """
-    Plots a list of panels in a vertical arangement in in figure window.
+    Plots a list of panels in a vertical arangement in a figure window.
     Inputs:
         fig = matplotlib figure object in which to plot, or None for a new figure
     Returns:
@@ -751,7 +754,7 @@ def plot_uvw_velocity(adcp,uvw='uvw',fig=None,title=None,ures=None,vres=None,wre
     if return_panels:
         return panels
     else:
-        fig = plot_vertical_panels(panels)
+        fig = plot_vertical_panels(panels,fig=fig)
         return fig
 
 
@@ -785,7 +788,7 @@ def plot_flow_summary(adcp,title=None,fig=None,ures=None,vres=None,use_grid_flow
     vectors.y = vectors.y - np.min(vectors.y)
     if xy_line is None:
         xy_line=adcp.xy_line # may still be None.
-    elif xy_line is 'calc':
+    elif xy_line == 'calc':
         xy_line=None # force recalc
     u_panel,v_panel = plot_uvw_velocity(adcp,uvw='uv',fig=fig,ures=ures,
                                         vres=vres,return_panels=True,

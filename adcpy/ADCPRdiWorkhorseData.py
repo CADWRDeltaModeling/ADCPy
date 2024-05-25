@@ -231,7 +231,9 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
                 gpsi = dict(zip(self.ensemble_gps_indexes[:,0],self.ensemble_gps_indexes[:,1]))
                 for ni in self.raw_adcp.number:
                     if ni in gpsi:
-                        dayf,lat,lon = self.gps_data[gpsi[ni]]
+                        if ni == 395:
+                            dude=1
+                        dayf,lat,lon = self.gps_data[gpsi[ni]-1]
                     else:
                         lat = np.nan
                         lon = np.nan

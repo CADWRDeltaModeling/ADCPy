@@ -109,28 +109,13 @@ class ADCPRdiRiverRayData(adcpy.ADCPTransectData):
         vN = np.copy(self.velocity[:,:,1]) - np.ones(vbins)*np.array([btN]).T
         vW = np.copy(self.velocity[:,:,2]) - np.ones(vbins)*np.array([btW]).T
         
-        # rotate velocities from ship coordibates
+        # rdi_pd0.py handles rotations
         coords=self.raw_adcp['coord_sys']
-        if coords is 'ship':
-            # convert ship coord to enu
-            delta = self.heading*np.pi/180
-            delta2D = np.ones(vbins)*np.array([delta]).T # array of headings
-            self.velocity[:,:,0] = np.cos(delta2D)*vE + np.sin(delta2D)*vN
-            self.velocity[:,:,1] = -np.sin(delta2D)*vE + np.cos(delta2D)*vN
-            self.velocity[:,:,2] = vW
+        assert(coords=='earth')
 
-            self.bt_velocity[:,0] = np.cos(delta)*btE + np.sin(delta)*btN
-            self.bt_velocity[:,1] = -np.sin(delta)*btE + np.cos(delta)*btN
-        elif coords is 'beam':
-            print("WARNING: looks like beam coordinates, not ready for that!")
-            print("  will punt and pretend it's east north up. ")
-            self.velocity[:,:,0] = vE
-            self.velocity[:,:,1] = vN
-            self.velocity[:,:,2] = vW
-        else:
-            self.velocity[:,:,0] = vE
-            self.velocity[:,:,1] = vN
-            self.velocity[:,:,2] = vW
+        self.velocity[:,:,0] = vE
+        self.velocity[:,:,1] = vN
+        self.velocity[:,:,2] = vW
 
         read_raw_history = "Constructor ADCPRdiRiverRayData: Raw RDI file: %s"%(self.raw_file)
 

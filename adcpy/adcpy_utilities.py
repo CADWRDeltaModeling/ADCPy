@@ -8,6 +8,8 @@ This code is open source, and defined by the included MIT Copyright License
 
 Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 2014-09 - First Release; blsaenz, esatel
+2024-05 - Updated for python3, modern numpy, added xy-binning by track, instead
+          of just flattening to a straight line
 """
 from __future__ import print_function
 
@@ -17,8 +19,11 @@ import scipy.stats as sp1
 import scipy.stats.stats as sp
 import scipy.stats.morestats as ssm
 import scipy.interpolate
+from scipy.ndimage import convolve
 import warnings
-from osgeo import osr
+#from osgeo import osr
+from pyproj import Transformer
+
 
 # These have moved around depending on versions
 nanmean=getattr(sp,'nanmean',None) or getattr(np,'nanmean')
@@ -62,12 +67,9 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
         crop=True, return_fft=False, fftshift=True, fft_pad=True,
         psf_pad=False, interpolate_nan=False, quiet=False,
         ignore_edge_zeros=False, min_wt=0.0, normalize_kernel=False,
-        use_numpy_fft=not has_fftw, nthreads=1):
+        use_numpy_fft=not has_fftw, nthreads=1, complextype=np.complex128,
+        use_rfft=False):
     """
-    Source:
-    http://agpy.googlecode.com/svn/trunk/AG_fft_tools/convolve_nd.py
-    On: 1/31/2013
-
     Convolve an ndarray with an nd-kernel.  Returns a convolved image with shape =
     array.shape.  Assumes image & kernel are centered.
 
@@ -98,7 +100,7 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
     min_wt: float
         If ignoring NANs/zeros, force all grid points with a weight less than
         this value to NAN (the weight of a grid point with *no* ignored
-        neighbors is 1.0).  
+        neighbors is 1.0).
         If `min_wt` == 0.0, then all zero-weight points will be set to zero
         instead of NAN (which they would be otherwise, because 1/0 = nan).
         See the examples below
@@ -170,13 +172,15 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 
     """
 
+    #print "Memory usage: ",heapy.heap().size/1024.**3
+
 
     # Checking copied from convolve.py - however, since FFTs have real &
     # complex components, we change the types.  Only the real part will be
     # returned!
     # Check that the arguments are lists or Numpy arrays
-    array = np.asarray(array, dtype=np.complex)
-    kernel = np.asarray(kernel, dtype=np.complex)
+    array = np.asarray(array, dtype=complex)
+    kernel = np.asarray(kernel, dtype=complex)
 
     # Check that the number of dimensions is compatible
     if array.ndim != kernel.ndim:
@@ -203,7 +207,10 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 
     # replace fftn if has_fftw so that nthreads can be passed
     global fftn, ifftn
-    if has_fftw and not use_numpy_fft:
+    if use_rfft:
+        fftn = np.fft.rfftn
+        ifftn = np.fft.irfftn
+    elif has_fftw and not use_numpy_fft:
         def fftn(*args, **kwargs):
             return fftwn(*args, nthreads=nthreads, **kwargs)
 
@@ -215,9 +222,9 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 
 
     # NAN catching
-    nanmaskarray = (array != array)
+    nanmaskarray = np.isnan(array)
     array[nanmaskarray] = 0
-    nanmaskkernel = (kernel != kernel)
+    nanmaskkernel = np.isnan(kernel)
     kernel[nanmaskkernel] = 0
     if ((nanmaskarray.sum() > 0 or nanmaskkernel.sum() > 0) and not interpolate_nan
             and not quiet):
@@ -237,7 +244,10 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
             kernel_is_normalized = True
         else:
             kernel_is_normalized = False
-
+            if (interpolate_nan or ignore_edge_zeros):
+                WARNING = ("Kernel is not normalized, therefore ignore_edge_zeros"+
+                    "and interpolate_nan will be ignored.")
+                log.warn(WARNING)
 
     if boundary is None:
         WARNING = ("The convolvend version of boundary=None is equivalent" +
@@ -258,8 +268,7 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 
     arrayshape = array.shape
     kernshape = kernel.shape
-    ndim = len(array.shape)
-    if ndim != len(kernshape):
+    if array.ndim != kernel.ndim:
         raise ValueError("Image and kernel must " +
             "have same number of dimensions")
     # find ideal size (power of 2) for fft.
@@ -273,15 +282,18 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
             # add the shape lists (max of a list of length 4) (smaller)
             # also makes the shapes square
             fsize = 2**np.ceil(np.log2(np.max(arrayshape+kernshape)))
-        newshape = np.array([fsize for ii in range(ndim)])
+        newshape = np.array([fsize for ii in range(array.ndim)])
     else:
         if psf_pad:
             # just add the biggest dimensions
             newshape = np.array(arrayshape)+np.array(kernshape)
+            # ERROR: this situation leads to crash if kernshape[i] = arrayshape[i]-1 for all i
         else:
             newshape = np.array([np.max([imsh, kernsh])
                 for imsh, kernsh in zip(arrayshape, kernshape)])
 
+    # added, @blsaenz 2024-05-24
+    newshape = np.int32(newshape)
 
     # separate each dimension by the padding size...  this is to determine the
     # appropriate slice size to get back to the input dimensions
@@ -294,19 +306,40 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
         kernslices += [slice(center - kerndimsize//2,
             center + (kerndimsize+1)//2)]
 
-    bigarray = np.ones(newshape, dtype=np.complex128) * fill_value
-    bigkernel = np.zeros(newshape, dtype=np.complex128)
-    bigarray[arrayslices] = array
-    bigkernel[kernslices] = kernel
-    arrayfft = fftn(bigarray)
+    #print "Memory usage (line 269): ",heapy.heap().size/1024.**3
+
+    arrayslices = tuple(arrayslices)
+    kernslices = tuple(kernslices)
+
+    # if no padding is requested, save memory by not copying things
+    if tuple(newshape) == arrayshape:
+        bigarray = array
+    else:
+        bigarray = np.ones(newshape, dtype=complextype) * fill_value
+        bigarray[arrayslices] = array
+
+    if tuple(newshape) == kernshape:
+        bigkernel = kernel
+    else:
+        bigkernel = np.zeros(newshape, dtype=complextype)
+        bigkernel[kernslices] = kernel
     # need to shift the kernel so that, e.g., [0,0,1,0] -> [1,0,0,0] = unity
     kernfft = fftn(np.fft.ifftshift(bigkernel))
-    fftmult = arrayfft*kernfft
+
+
+    # for memory conservation's sake, do this all on one line
+    # it is kept in comments in its multi-line form for clarity
+    # arrayfft = fftn(bigarray)
+    # fftmult = arrayfft*kernfft
+    fftmult = fftn(bigarray)*kernfft
+
+    #print "Memory usage (line 294): ",heapy.heap().size/1024.**3
+
     if (interpolate_nan or ignore_edge_zeros) and kernel_is_normalized:
         if ignore_edge_zeros:
-            bigimwt = np.zeros(newshape, dtype=np.complex128)
+            bigimwt = np.zeros(newshape, dtype=complextype)
         else:
-            bigimwt = np.ones(newshape, dtype=np.complex128)
+            bigimwt = np.ones(newshape, dtype=complextype)
         bigimwt[arrayslices] = 1.0-nanmaskarray*interpolate_nan
         wtfft = fftn(bigimwt)
         # I think this one HAS to be normalized (i.e., the weights can't be
@@ -379,19 +412,19 @@ def convolvend(array, kernel, boundary='fill', fill_value=0,
 #    else:
 #        assert(np.abs(conv1[15,0,15] - 1./75.) < tolerance)
 #        assert(np.abs(conv1[15,1,15] - 1./100.) < tolerance)
-#        assert(np.abs(conv1[15,15,15] - 1./125.) < tolerance) 
- 
+#        assert(np.abs(conv1[15,15,15] - 1./125.) < tolerance)
+
 
 def get_axis_num_from_str(axes_string):
     """
     u,v,w correspond to 0,1,2 in the trailing axis of adcpy velocity arrays.
-    This method returns a list of 0,1, and 2s corresponding to an input 
+    This method returns a list of 0,1, and 2s corresponding to an input
     string composed u,v, and ws.
     Inputs:
         axes_string = string composed of u v or w only [str]
     Returns:
-        ax_list = python list containing the integers 0,1, or 2 
-    """    
+        ax_list = python list containing the integers 0,1, or 2
+    """
     if not isinstance(axes_string, six.string_types):
         raise ValueError("axes_string argument must be a string")
     ax_list = []
@@ -406,8 +439,8 @@ def get_axis_num_from_str(axes_string):
         elif char == 'w':
             ax_list.append(2)
     return ax_list
-            
- 
+
+
 def fit_headerror(headin,errin):
     """
     Least-squares harmonic fit of heading error
@@ -415,7 +448,7 @@ def fit_headerror(headin,errin):
         headin   = headings (binned) --> assumes units of degrees
         errin    = heading errors at each headin (binned)
     Returns:
-        coeff = harmonic fit coefficients [y0 a b] where y0 is the offset, 
+        coeff = harmonic fit coefficients [y0 a b] where y0 is the offset,
           a is the coefficient for the cosine and b is the coefficient for the
           sine.
         errfit = fitted error by heading
@@ -424,17 +457,17 @@ def fit_headerror(headin,errin):
     # periods, but for ADCP stuff just fit one period.
     per=np.array([360.0]) # the set of periods to fit
     valid = ~np.isnan(headin+errin)
-    
+
     yy = errin[valid]
     tt = headin[valid]
-    nper = len(per) 
+    nper = len(per)
 
     # the angular frequencies to fit - for us, just fit the first fourier mode
-    si = 2*np.pi/per  # 
+    si = 2*np.pi/per  #
 
     M  = np.zeros( (1+2*nper,1+2*nper), np.float64) # 1+2*np is 1 DC component, and np sin/cos pairs
-    x  = np.zeros(1+2*nper,np.float64) 
-   
+    x  = np.zeros(1+2*nper,np.float64)
+
     for ic in range(1,2*nper+2):
         if ic == 1: # DC component
             x[ic-1] = sum(yy)
@@ -443,42 +476,42 @@ def fit_headerror(headin,errin):
                     M[ic-1,ir-1] = len(tt)
                 elif ir%2 == 1:
                     sr = si[(ir-1)/2-1] # HERE - need to figure out what si really is.
-                    M[ic-1,ir-1] = sum(np.sin(sr*tt)) 
+                    M[ic-1,ir-1] = sum(np.sin(sr*tt))
                 elif ir%2 == 0:
                     sr = si[ir/2-1] # HERE - same
-                    M[ic-1,ir-1] = sum(np.cos(sr*tt)) 
+                    M[ic-1,ir-1] = sum(np.cos(sr*tt))
         elif ic % 2 == 1:
             sc = si[ (ic-1)/2 -1] # HERE
-            x[ic-1] = sum(yy*np.sin(sc*tt)) # 
+            x[ic-1] = sum(yy*np.sin(sc*tt)) #
             for ir in range(1,2+2*nper):
                 if ir == 1:
-                    M[ic-1,ir-1] = sum(np.sin(sc*tt)) 
+                    M[ic-1,ir-1] = sum(np.sin(sc*tt))
                 elif ir%2 == 1:
                     sr = si[(ir-1)/2-1]
-                    M[ic-1,ir-1] = sum(np.sin(sc*tt) * np.sin(sr*tt)) 
+                    M[ic-1,ir-1] = sum(np.sin(sc*tt) * np.sin(sr*tt))
                 elif ir%2 == 0:
                     sr = si[ir/2-1]
-                    M[ic-1,ir-1] = sum(np.sin(sc*tt) * np.cos(sr*tt)) 
+                    M[ic-1,ir-1] = sum(np.sin(sc*tt) * np.cos(sr*tt))
         elif ic%2 == 0:
             sc = si[ic/2-1] # I think ic={1,2} should map to si[1]
             x[ic-1] = sum(yy*np.cos(sc*tt))
             for ir in range(1,2+2*nper):
                 if ir == 1:
-                    M[ic-1,ir-1] = sum(np.cos(sc*tt)) 
+                    M[ic-1,ir-1] = sum(np.cos(sc*tt))
                 elif ir%2 == 1:
                     sr = si[(ir-1)/2-1]
                     M[ic-1,ir-1] = sum(np.cos(sc*tt) * np.sin(sr*tt))
                 elif ir%2 == 0:
                     sr = si[ir/2-1]
-                    M[ic-1,ir-1] = sum(np.cos(sc*tt) * np.cos(sr*tt)) 
+                    M[ic-1,ir-1] = sum(np.cos(sc*tt) * np.cos(sr*tt))
 
     coeff = np.linalg.solve(M,x)
-    errfit = np.zeros(len(errin),np.float64) 
+    errfit = np.zeros(len(errin),np.float64)
     errfit = errfit + coeff[0]
     for ic in range(2,2*nper+2):
-        if ic%2 == 1: 
+        if ic%2 == 1:
             sc = si[ (ic-1)/2 -1]
-            errfit = errfit + coeff[ic-1]*np.sin(sc*headin) 
+            errfit = errfit + coeff[ic-1]*np.sin(sc*headin)
         elif ic%2==0:
             sc = si[ ic/2 -1]
             errfit = errfit + coeff[ic-1]*np.cos(sc*headin)
@@ -504,7 +537,7 @@ def createLine(v1,v2):
     direction).
 
     ---------
-    author : David Legland 
+    author : David Legland
     INRA - TPV URPOI - BIA IMASTE
     created the 31/10/2003.
 
@@ -513,9 +546,9 @@ def createLine(v1,v2):
     all param in a single tab, and point + dx + dy.
     Also add support for creation of arrays of lines.
 
-    NOTE : A line can also be represented with a 1*5 array : 
+    NOTE : A line can also be represented with a 1*5 array :
     [x0 y0 dx dy t].
-    whith 't' being one of the following : 
+    whith 't' being one of the following :
     - t=0 : line is a singleton (x0,y0)
     - t=1 : line is an edge segment, between points (x0,y0) and (x0+dx,
     y0+dy).
@@ -531,18 +564,18 @@ def createLine(v1,v2):
     NOTE2 : Any line object can be represented using a 1x6 array :
     [x0 y0 dx dy t0 t1]
     the first 4 parameters define the supporting line,
-    t0 represent the position of the first point on the line, 
+    t0 represent the position of the first point on the line,
     and t1 the position of the last point.
     * for edges : t0 = 0, and t1=1
     * for straight lines : t0 = -inf, t1=inf
     * for rays : t0=0, t1=inf (or t0=-inf,t1=0 for inverted ray).
     I propose to call these objects 'lineArc'
     """
-    
+
     if len(v1)==2 and len(v2)==2:
         #first input parameter is first point, and second input is the
         #second point.
-        line = (v1[0], v1[1], v2[0]-v1[0], v2[1]-v1[1])   
+        line = (v1[0], v1[1], v2[0]-v1[0], v2[1]-v1[1])
     else:
         # error
         print('createLine argument error: Please enter a pair of x-y points(as lists)')
@@ -553,68 +586,68 @@ def createLine(v1,v2):
 def linePosition(point, line):
     """
     LINEPOSITION return position of a point on a line
- 
+
     L = LINEPOSITION(POINT, LINE)
     compute position of point POINT on the line LINE, relative to origin
     point and direction vector of the line.
     LINE has the form [x0 y0 dx dy],
     POINT has the form [x y], and is assumed to belong to line.
- 
+
     L = LINEPOSITION(POINT, LINES)
     if LINES is an array of NL lines, return NL positions, corresponding to
     each line.
- 
+
     L = LINEPOSITION(POINTS, LINE)
     if POINTS is an array of NP points, return NP positions, corresponding
     to each point.
- 
+
     L = LINEPOSITION(POINTS, LINES)
     if POINTS is an array of NP points and LINES is an array of NL lines,
     return an array of [NP NL] position, corresponding to each couple
     point-line.
- 
+
     see createLine for more details on line representation.
- 
+
     ---------
- 
-    author : David Legland 
+
+    author : David Legland
     INRA - TPV URPOI - BIA IMASTE
-    created the 25/05/2004. 
+    created the 25/05/2004.
 
     HISTORY :
-    07/07/2005 : manage multiple input 
+    07/07/2005 : manage multiple input
     """
 
     Nl = len(line.shape)
-    if Nl is not 1:
+    if Nl != 1:
         Nl, cl = line.shape  #Nl = size(line, 1);
     Np = len(point.shape)
-    if Np is not 1:
+    if Np != 1:
         Np, cp = point.shape  #Np = size(point, 1);
-    
+
     line_local = np.copy(line)
     point_local = np.copy(point)
-        
-    if Nl is 1 and Np > 1:
+
+    if Nl == 1 and Np > 1:
 
         line_local = np.tile(line,(Np,1))
 
-    elif Np is 1 and Nl > 1:
-        
-        point_local = np.tile(point,(Nl,1))       
+    elif Np == 1 and Nl > 1:
 
-    try:        
+        point_local = np.tile(point,(Nl,1))
+
+    try:
 
         dxl = line_local[...,2] # dxl = line(:, 3);
         dyl = line_local[...,3] # dyl = line(:, 4);
         dxp = point_local[...,0] - line_local[...,0] # dxp = point(:, 1) - line(:, 1);
         dyp = point_local[...,1] - line_local[...,1] # dyp = point(:, 2) - line(:, 2);
-        
+
     except:
-              
+
        print('linePosition: line and point must be equal or singular - this is probably the error.')
        raise
-    
+
     #print 'dxl,dyl',dxl,dyl
     #print 'dxp,dyp',dxp,dyp
     #d = (dxp.*dxl + dyp.*dyl)./(dxl.*dxl+dyl.*dyl);
@@ -625,24 +658,24 @@ def meanangle(inangle,dim=0,sens=1e-12):
     """
     MEANANGLE will calculate the mean of a set of angles (in degrees) based
     on polar considerations.
-    
+
     Usage: [out] = meanangle(in,dim)
-    
+
     in is a vector or matrix of angles (in degrees)
     out is the mean of these angles along the dimension dim
-    
+
     If dim is not specified, the first non-singleton dimension is used.
-    
+
     A sensitivity factor is used to determine oppositeness, and is how close
     the mean of the complex representations of the angles can be to zero
     before being called zero.  For nearly all cases, this parameter is fine
     at its default (1e-12), but it can be readjusted as a third parameter if
     necessary:
-    
+
     [out] = meanangle(in,dim,sensitivity)
-    
+
     Written by J.A. Dunne, 10-20-05
-    """  
+    """
     ind = sum(np.shape(inangle))
     if ind == 1 or np.shape(inangle) :
         #This is a scalar
@@ -658,8 +691,8 @@ def meanangle(inangle,dim=0,sens=1e-12):
 
     in1 = np.exp(1j*in1)
     mid = np.mean(in1,dim)
-    out = np.arctan2(np.imag(mid),np.real(mid))*180/np.pi    
-    
+    out = np.arctan2(np.imag(mid),np.real(mid))*180/np.pi
+
     #ii = abs(mid)<sens
     #out[ii] = np.nan
     return out
@@ -668,17 +701,17 @@ def meanangle(inangle,dim=0,sens=1e-12):
 def princax(w):
     """
     PRINCAX Principal axis, rotation angle, principal ellipse
-    
+
     [theta,maj,min,wr]=princax(w)
-    
+
     Input: w = complex vector time series (u+i*v)
-    
+
     Output: theta = angle of maximum variance, math notation (east == 0, north=90)
     maj = major axis of principal ellipse
     min = minor axis of principal ellipse
     wr = rotated time series, where real(wr) is aligned with
     the major axis.
-    
+
     For derivation, see Emery and Thompson, "Data Analysis Methods
     in Oceanography", 1998, Pergamon, pages 325-327. ISBN 0 08 0314341
     ###################################################################
@@ -690,32 +723,32 @@ def princax(w):
     Version 1.2 (3/1/2000) Rich Signell (rsignell@usgs.gov)
     Simplified maj and min axis computations and added reference
     to Emery and Thompson book
-    conveted to python - B Saenz 2/1/2013 
+    conveted to python - B Saenz 2/1/2013
     ###################################################################
     """
     # use only the good (finite) points
     ind = np.isfinite(w) #ind=find(isfinite(w));
     wr = w  #wr=w;
     w_work = w[ind] #w=w(ind);
-    
-    # find covariance matrix    
+
+    # find covariance matrix
     cv_data = np.array([np.real(w_work), np.imag(w_work)]) # arrange data
     cv=np.cov(cv_data) #cv=cov([real(w(:)) imag(w(:))]);
-    
+
     # find direction of maximum variance
     theta = 0.5*np.arctan2(2.0*cv[1,0],cv[0,0]-cv[1,1]) #theta=0.5*atan2(2.*cv(2,1),(cv(1,1)-cv(2,2)) );
-    
+
     # find major and minor axis amplitudes
-    
+
     term1 = cv[0,0]+cv[1,1] #term1=(cv(1,1)+cv(2,2);
     term2 = np.sqrt((cv[0,0]-cv[1,1])**2 + 4.0*cv[1,0]**2) #term2=sqrt((cv(1,1)-cv(2,2)).^2 + 4.*cv(2,1).^2);
     maj1 = np.sqrt(0.5*(term1+term2))  #maj=sqrt(.5*(term1+term2));
     min1 = np.sqrt(0.5*(term1-term2))  #min=sqrt(.5*(term1-term2));
-    
+
     # rotate into principal ellipse orientation
     wr[ind] = w_work*np.exp(-1j*theta)  #wr(ind)=w.*exp(-i*theta);
     #theta=theta*180./np.pi;
-    
+
     #return (theta,maj1,min1,wr)
     return theta
 
@@ -735,13 +768,13 @@ def get_eof(x):
     U, S, V = np.linalg.svd(cov) #, full_matrices=True)
     B = U.T
     al = x.dot(B.T)
-    
+
     return (B, S, al)
 
 
 def fillProParab(u,z1,depth1,bbc=0):
     """
-    Extrapolates the velocity profile to the bed and to the top value of zin 
+    Extrapolates the velocity profile to the bed and to the top value of zin
     using a parabolic fit..
     Inputs:
         u = velocity profile that extends form the surface to the bed [1D or 2D numpy array]
@@ -752,7 +785,7 @@ def fillProParab(u,z1,depth1,bbc=0):
           0 ==> U(-H)=0
           1 ==> dSdz(-H)=0
     Returns:
-        unew = velocity profile with nan's at top and bottom replaced with 
+        unew = velocity profile with nan's at top and bottom replaced with
             extrapolated values
 
     """
@@ -761,7 +794,7 @@ def fillProParab(u,z1,depth1,bbc=0):
     depth = depth1
     if nanmean(depth) < 0:
         depth=-depth
-    
+
     # find dimensions
     if len(np.shape(depth)) > 1:
         nt = len(depth)
@@ -771,7 +804,7 @@ def fillProParab(u,z1,depth1,bbc=0):
         nz = len(z1)
         aa = u.shape
         nt = aa[aa!=nz]
-    else:        
+    else:
         nt,nz = u.shape
 
     # flush out z if not equal in shape to u
@@ -782,10 +815,10 @@ def fillProParab(u,z1,depth1,bbc=0):
         except:
             z = np.array([z]).T
         z = np.tile(z,(nt,1))
-    
-    
+
+
     unew=np.nan*u
-    
+
     for kk in range(nt):
         d=depth[kk]
         uin=u[kk,:]
@@ -793,11 +826,11 @@ def fillProParab(u,z1,depth1,bbc=0):
         vf=uin;
         a=np.nonzero(~np.isnan(uin))[0];
         b=np.nonzero(np.isnan(uin))[0];
-        
+
         if len(a) < 3:
-    
+
             print('fillProParab: insufficient data in profile %i'%kk)
-    
+
         else:
 
             # find internal nans and intepolate linearly
@@ -807,26 +840,26 @@ def fillProParab(u,z1,depth1,bbc=0):
             # near surface --> dudz=0 at z=0
             jj = np.nonzero(np.greater(zin, np.max(zin[a])))
             if len(jj[0]) > 0:
-                
-                if np.greater( zin[a[-1]], zin[a[0]] ):           
+
+                if np.greater( zin[a[-1]], zin[a[0]] ):
                     u0 = np.mean(uin[a[-3]:a[-1]])
                     z0 = np.mean(zin[a[-3]:a[-1]])
                     u0z = (uin[a[-3]] - uin[a[-1]]) / (zin[a[-3]]-zin[a[-1]])
-                else: 
+                else:
                     u0 = np.mean(uin[a[0]:a[2]])
                     z0 = np.mean(zin[a[0]:a[2]])
                     u0z = (uin[a[0]] - uin[a[2]]) / (zin[a[0]] - zin[a[2]])
-    
+
                 aa = u0z / (2.0*z0)
                 cc = u0 - aa*(z0**2)
                 vf[jj]=aa*zin[jj]**2 + cc
-            
+
             # near bot --> u=0 at z=-h
             jj = np.nonzero(np.logical_and( np.less(zin, np.min(zin[a])) ,
-                                            np.greater(zin, -1.0*d) ))      
+                                            np.greater(zin, -1.0*d) ))
             if len(jj[0]) > 0:
-    
-                if np.greater( zin[a[-1]], zin[a[0]] ):           
+
+                if np.greater( zin[a[-1]], zin[a[0]] ):
                     u0 = np.mean(uin[a[0]:a[2]])
                     z0 = np.mean(zin[a[0]:a[2]])
                     u0z = (uin[a[0]] - uin[a[2]]) / (zin[a[0]] - zin[a[2]])
@@ -834,8 +867,8 @@ def fillProParab(u,z1,depth1,bbc=0):
                     u0 = np.mean(uin[a[-3]:a[-1]])
                     z0 = np.mean(zin[a[-3]:a[-1]])
                     u0z = (uin[a[-3]] - uin[a[-1]]) / (zin[a[-3]]-zin[a[-1]])
-    
-                if bbc==0:                
+
+                if bbc==0:
                     aa = -u0/(z0+d)**2 + u0z/(z0+d)
                     bb = u0z-2.0*aa*z0
                     cc = bb*d-aa*d**2
@@ -843,11 +876,11 @@ def fillProParab(u,z1,depth1,bbc=0):
                     aa = u0z/(2.0*(z0+d))
                     bb = 2.0*aa*d
                     cc = u0 - 2.0*aa*z0**2 - bb*z0
-    
-                vf[jj]=aa*(zin[jj]**2) + bb*zin[jj] + cc 
-                
+
+                vf[jj]=aa*(zin[jj]**2) + bb*zin[jj] + cc
+
         unew[kk,:] = vf
-    
+
     return unew
 
 def calcKxKy(vU,vV,dd,z,depth):
@@ -860,38 +893,38 @@ def calcKxKy(vU,vV,dd,z,depth):
         z(depths) = velocty bin depths
         depth(profiles) = profile bottom depth
     Returns:
-        ustbar = 
+        ustbar =
         Kx_3i = horizontal dispersion coefficients
         Ky_3i = lateral dispersion coefficients
-        
+
     """
     ############ calc Ky --> transverse mixing #################
     Ubar = nanmean(np.reshape(vU,(np.size(vU),1)))
     Vbar = nanmean(np.reshape(vV,(np.size(vV),1)))
-    
+
     nx = np.size(depth)
     nz = np.size(z)
     #Ubar = nanmean(vU,1)        # Ubar(n) = nanmean(A(n).uuex(:));
     #Vbar = nanmean(vV,1)        # Vbar(n) = nanmean(A(n).vvex(:));
-    
+
     bb = np.max(dd) - np.min(dd)      # bb(n) = max(A(n).dd)-min(A(n).dd);
     # cross-sect avg depth (as in Deng) --> thalweg instead?
-    #Hbar = nanmean(self.bt_depth) # 
-    
+    #Hbar = nanmean(self.bt_depth) #
+
     ### calc ustar
-    # pick a vel from a constant ht above bed --> choose 2 m  
-#        zz = ( -np.ones((self.n_bins))*self.bt_depth - 
+    # pick a vel from a constant ht above bed --> choose 2 m
+#        zz = ( -np.ones((self.n_bins))*self.bt_depth -
 #               self.bin_center_elevation*np.ones((self.n_ensembles)) )
     d1 = np.squeeze(depth)
     depths = np.array([d1]).T * np.ones((1,nz))
     bins = np.array([z])*(np.ones((nx,1)))
     zz = -depths + bins
-   
-    #zz = ( -np.ones((self.n_grid_z))*self.depth - 
+
+    #zz = ( -np.ones((self.n_grid_z))*self.depth -
     #       self.grid_z*(np.ones((self.n_grid_xy,1)).T) )
 
-    
-    zztmp = np.copy(zz)    
+
+    zztmp = np.copy(zz)
     zztmp[np.greater(zztmp, 2)] = np.nan
     #jnk,ii = np.max(np.nonzero(~np.isnan(zztmp)))
     ii = np.argmax(~np.isnan(zztmp),axis=1)
@@ -899,13 +932,13 @@ def calcKxKy(vU,vV,dd,z,depth):
     for i in np.arange(np.min(ii),np.max(ii)):
         nn = np.nonzero(np.equal(ii,i))
         U2m[nn] = vU[nn,i]
-    
+
     # calc ustar: ustar^2 =  Cd*U^2
     Cd = 0.003
     ustar = np.sqrt(Cd*U2m**2)
     ustbar = nanmean(ustar)
     U2mbar = nanmean(U2m)
-    
+
     # Ky - just 1 lateral sections
     vpr = nanmean(vV)
     vpr = vpr-nanmean(vpr)
@@ -915,20 +948,20 @@ def calcKxKy(vU,vV,dd,z,depth):
     #dzg = np.abs(self.bin_center_elevation[1]-self.bin_center_elevation[0])
     dzg = np.abs(z[1]-z[0])
     zsec = dzg*np.arange(0,nzgw)
-    hsec = np.max(zsec)+dzg/2           
+    hsec = np.max(zsec)+dzg/2
     ustsec = ustbar
-                    
+
     # vvvvv--------- choose Kz here: assume parabolic profile
     kap=0.4
     Kzg = kap*ustsec*hsec*(zsec/hsec)*(1-zsec/hsec)
-        
+
     # ^^^^^--------- choose Kz here
     Kyt = 0.15*ustsec*hsec # lateral turbulent diffusivity
 
     # Ky: fischer's (1967) triple integral, also Eqn 5.16 in Fischer et al 1979:
-    c1 = np.zeros(np.size(kwet)) 
+    c1 = np.zeros(np.size(kwet))
     c2 = c1
-    c3 = c1 #  terms   
+    c3 = c1 #  terms
     for j in range(1,nzgw):
         c1[j] = vpr[j]*(zsec[j]-zsec[j-1])
 
@@ -940,34 +973,34 @@ def calcKxKy(vU,vV,dd,z,depth):
     for j in range(1,nzgw):
         c3[j] = vpr[j]*c2[j]*(zsec[j]-zsec[j-1])
 
-    Ky_3i = -1.0*(np.sum(c3)/hsec)+Kyt            
-    
+    Ky_3i = -1.0*(np.sum(c3)/hsec)+Kyt
+
     # %%%%%%% calc Kx
     zwet = -3                                  # depth to deep enough to include in xsect
-    iwet = np.nonzero(np.less(d1,zwet)) # wet (and moderately deep) columns    
-    nygw = np.size(iwet)                        # no. wet cells    
+    iwet = np.nonzero(np.less(d1,zwet)) # wet (and moderately deep) columns
+    nygw = np.size(iwet)                        # no. wet cells
     upr = nanmean(vU,1)-Ubar                # depth avg - xsect mean
     #bg = dd[iwet[nygw-1]] - dd[iwet[0]]           # wet width
-    dyg = abs(dd[1] - dd[0])  
+    dyg = abs(dd[1] - dd[0])
     #alph = dyg/bg*np.ones(len(iwet))           # fractional width (const in this case)
     uprwet = upr[iwet]
     uprwet[np.isnan(uprwet)] = 0.0
-    hwet = -d1[iwet] 
+    hwet = -d1[iwet]
     hwet[np.isnan(hwet)] = 0.0
     ygwet = dd[iwet]
-    
+
     # vvvvv--------- choose Ky here -----------
-    Kyg = Ky_3i*np.ones(np.size(iwet))   
+    Kyg = Ky_3i*np.ones(np.size(iwet))
     # ^^^^^--------- choose Ky here -----------
 
-    # Kx: fischer's triple integral: -1/A int(0toB) u'(y)h(y)dy int(0toy)1/(D_yh(y'))dy' int(0toy'')u'(y'')h(y'')dy'' 
+    # Kx: fischer's triple integral: -1/A int(0toB) u'(y)h(y)dy int(0toy)1/(D_yh(y'))dy' int(0toy'')u'(y'')h(y'')dy''
     # where u'(y)=u(y)-Ubar, u(y) is depth avg vel, Ubar=xsect avg
-    
+
     dAg = dyg*dzg
     Ag = dAg*np.sum(np.sum(~np.isnan(vU)))
     c1 = np.zeros(np.size(iwet))
     c2 = c1
-    c3 = c1  # terms   
+    c3 = c1  # terms
     for j in range(1,nygw):
         c1[j] = uprwet[j]*hwet[j]*np.abs(ygwet[j]-ygwet[j-1])
 
@@ -979,7 +1012,7 @@ def calcKxKy(vU,vV,dd,z,depth):
     for j in range(1,nygw):
         c3[j] = uprwet[j]*hwet[j]*c2[j]*np.abs(ygwet[j]-ygwet[j-1])
 
-    Kx_3i = -1.0*(np.sum(c3)/Ag)    
+    Kx_3i = -1.0*(np.sum(c3)/Ag)
 
     return (ustbar,Kx_3i,Ky_3i)
 
@@ -991,8 +1024,8 @@ def interp_nans_1d(data):
         data = 1D numpy array witn NaN values
     Returns:
         data = same dimension numpy array with NaN replaced by interpolated values
-        
-    """   
+
+    """
     # Create a boolean array indicating where the nans are
     bad_indexes = np.isnan(data)
     # Create a boolean array indicating where the good values area
@@ -1003,32 +1036,32 @@ def interp_nans_1d(data):
     interpolated = np.interp(bad_indexes.nonzero()[0], good_indexes.nonzero()[0], good_data)
     # Replace the original data with the interpolated values.
     data[bad_indexes] = interpolated
-    
+
     return data
 
 
 def points_to_xy(ll_points,xy_srs,ll_srs='WGS84'):
     """
-    Project geographic coordinates ll_points (with projection ll_srs) to 
+    Project geographic coordinates ll_points (with projection ll_srs) to
     projection xy_srs.
     Inputs:
         ll_points = 2D numpy array shape [n,2], where [:,0] are lon and [:,1] are lat
         xy_srs = new projection, as an EPSG string
         ll_srs = projection of ll_points, as an EPSG string
     Returns:
-        xy_points = ll_point locations in xy_srs projection, 2D array of shape 
-          [n,2], where [:,0] is x and [:,1] is y        
-    """   
-    
+        xy_points = ll_point locations in xy_srs projection, 2D array of shape
+          [n,2], where [:,0] is x and [:,1] is y
+    """
+
     from_srs = osr.SpatialReference()
     from_srs.SetFromUserInput(ll_srs)
     to_srs = osr.SpatialReference()
     to_srs.SetFromUserInput(xy_srs)
-    
+
     xform = osr.CoordinateTransformation(from_srs,to_srs)
 
     xy_points = np.zeros( np.shape(ll_points), np.float64)
-    
+
     npoints, two = np.shape(ll_points)
     for i in range(npoints):
         x,y,z = xform.TransformPoint(ll_points[i,0],ll_points[i,1],0 )
@@ -1046,8 +1079,8 @@ def principal_axis(Uflow,Vflow,calc_type='EOF'):
         calc_type = string ['EOF' = eigenvector PCA calculation,
                             'princax' = princax PCA calculation]
     Returns:
-        principal flow variability axis, in radians      
-    """   
+        principal flow variability axis, in radians
+    """
     if calc_type == 'princeax':
         # This method seems to fail with diverse vecities, sometimes getting it 180 degrees off
         return principal_axis_from_princax(Uflow,Vflow)
@@ -1060,16 +1093,16 @@ def principal_axis_from_princax(Uflow,Vflow):
     Helper method for calculating the principal axis using princeax
     """
     nn = ~np.isnan(Uflow+Vflow)
-    return princax(Uflow[nn]+1j*Vflow[nn])      
+    return princax(Uflow[nn]+1j*Vflow[nn])
 
 
 def principal_axis_from_get_eof(Uflow,Vflow):
     """
     Helper method for calculating the principal axis using eigenvectors
-    """    
+    """
     nn = ~np.isnan(Uflow+Vflow)
     vEh = Uflow[nn]; vNh = Vflow[nn]
-    
+
     #eof_input = zeros((2,self.n_ensembles))
     B,S,al = get_eof(np.column_stack((vEh, vNh)))
     return -np.arcsin(B[0,1])
@@ -1085,8 +1118,8 @@ def find_max_elev_from_velocity(vE,elev,assume_regular_grid=True):
           bottom non-nan cell to arrive at max_evel.  False, reports the
           elev value of the deepest non-nan cell.
     Returns:
-        max_elev = 1D numpy array, shape [ne], of max elevation of vE      
-    """    
+        max_elev = 1D numpy array, shape [ne], of max elevation of vE
+    """
     n_ens,n_bins = np.shape(vE)
     max_elev = np.zeros(n_ens)
     # don't know grid, but assume regular grid so that we can add 1/2 to
@@ -1095,14 +1128,14 @@ def find_max_elev_from_velocity(vE,elev,assume_regular_grid=True):
         half = elev[1]-elev[0]/2.0
     else:
         half = 0.0
-    
+
     for i in range(n_ens):
         idx = ~np.isnan(vE[i,:])
         if idx.any():
             idx = np.where(idx)[0]
             max_elev[i] = elev[idx[-1]] + half
     return max_elev
-    
+
 
 def calc_normal_rotation(xy_line):
     """
@@ -1112,7 +1145,7 @@ def calc_normal_rotation(xy_line):
     Output:
         The normal angle to xy_line in radians
     """
-    return np.pi/2 - np.arctan2(xy_line[1,1]-xy_line[0,1],xy_line[1,0]-xy_line[0,0])    
+    return np.pi/2 - np.arctan2(xy_line[1,1]-xy_line[0,1],xy_line[1,0]-xy_line[0,0])
 
 
 def calc_Rozovski_rotation(Uflow,Vflow):
@@ -1124,7 +1157,7 @@ def calc_Rozovski_rotation(Uflow,Vflow):
     Output:
         Streamwise angles, shape [ne]
     """
-    return np.arctan2(Vflow,Uflow) 
+    return np.arctan2(Vflow,Uflow)
 
 
 def calc_net_flow_rotation(Uflow,Vflow):
@@ -1134,10 +1167,10 @@ def calc_net_flow_rotation(Uflow,Vflow):
         Uflow = 1d array of flow [volume] values in U direction, shape [ne]
         Vflow = 1d array of flow [volume] values in V direction, shape [ne]
     Output:
-        Streamwise angle, scalar, in radians 
+        Streamwise angle, scalar, in radians
     """
     return np.arctan2(np.nansum(Vflow),np.nansum(Uflow))
-    
+
 
 def average_vector(npvector,avg_shape):
     """
@@ -1145,24 +1178,24 @@ def average_vector(npvector,avg_shape):
     (reducing the resolution).
     Inputs:
         npvector = 1d numpy array, evenly divisible by avg_shape
-        avg_shape = new shape [x,y] for array where x*y=np.size(npvector) 
+        avg_shape = new shape [x,y] for array where x*y=np.size(npvector)
     Output:
-        sequentially averaged npvector data 
-    """    
+        sequentially averaged npvector data
+    """
     return nanmean(npvector.reshape(avg_shape),1)
 
 
 def average_vector_clip(npvector,n_avg):
     """
     Takes the average of n_avg sequential values of a numpy vector
-    (reducing the resolution).  Drops trailing npvector values that remain 
+    (reducing the resolution).  Drops trailing npvector values that remain
     after dividing np.size(npvector) by n_avg.
     Inputs:
         npvector = 1d numpy array, evenly divisible by avg_shape
-        n_avg = scalar number of sequential values to average 
+        n_avg = scalar number of sequential values to average
     Output:
-        sequentially averaged npvector data 
-    """    
+        sequentially averaged npvector data
+    """
     n = np.size(npvector)
     nnew = np.int(np.floor(n/n_avg))
     nn = range(nnew*n_avg)
@@ -1174,9 +1207,9 @@ def average_array(nparray,avg_shape,axis):
     (reducing the resolution).
      Inputs:
         nparray = 2d numpy array, with leftmost axis evenly divisible by avg_shape
-        avg_shape = new shape [x,y] for array where x*y=np.size(nparray[n,:]) 
+        avg_shape = new shape [x,y] for array where x*y=np.size(nparray[n,:])
     Output:
-        sequentially averaged nparray data   
+        sequentially averaged nparray data
     """
     # There may be a faster way of doing this - apparently this is not vectorized
     return np.apply_along_axis(average_vector,axis,nparray,avg_shape)
@@ -1185,14 +1218,14 @@ def average_array(nparray,avg_shape,axis):
 def average_array_clip(nparray,n_avg,axis):
     """
     Takes the average of n_avg values in the zero index of a numpy array
-    (reducing the resolution). Drops trailing nparray values in the leftmost 
+    (reducing the resolution). Drops trailing nparray values in the leftmost
     dimension that remain after dividing np.size(nparray[n,:]) by n_avg.
     Inputs:
         nparray = 2d numpy array, with leftmost axis evenly divisible by avg_shape
-        n_avg = scalar number of sequential values to average 
+        n_avg = scalar number of sequential values to average
     Output:
-        sequentially averaged nparray data   
-    """    
+        sequentially averaged nparray data
+    """
     ne,nbins = np.size(nparray)
     if axis == 0:
         nnew = np.int(np.floor(ne/n_avg))
@@ -1210,9 +1243,9 @@ def centroid(xy):
     Inputs:
         xy_in = 2D numpy array, projected x/y positions of headings{m}, shape [n,2]
     Output:
-        numpy array of shape [1,2] contain x-y centroid position   
-    """    
-    npoints,temp = np.shape(xy)    
+        numpy array of shape [1,2] contain x-y centroid position
+    """
+    npoints,temp = np.shape(xy)
     return np.array([[np.sum(xy[:,0])/npoints,np.sum(xy[:,1])/npoints]])
 
 def distance_betweeen_point_clouds(xy1,xy2):
@@ -1222,13 +1255,13 @@ def distance_betweeen_point_clouds(xy1,xy2):
         xy1 = 2D numpy array, projected x/y positions of headings{m}, shape [n,2]
         xy2 = 2D numpy array, projected x/y positions of headings{m}, shape [n,2]
     Output:
-        scalar distance in the same units as xy1,xy2   
-    """    
+        scalar distance in the same units as xy1,xy2
+    """
     return find_line_distance(centroid(xy1),centroid(xy2))
 
 
 def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
-                hdg_bin_size=None,hdg_bin_min_samples=None):      
+                hdg_bin_size=None,hdg_bin_min_samples=None):
     """
     Using raw data, generates a heading correction for a moving
     ADCP platform (i.e. a boat).  This circular correction should account for
@@ -1246,7 +1279,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         hdg_bin_min_samples = minimum valid compass headings for a corection to bin
     Output:
         harmoic fit composed of the [scalar, sine, cosine] components
-    """    
+    """
     #import mean_angle
 
     # parameters for the heading correct process:
@@ -1256,7 +1289,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         hdg_bin_size=10 # bin size for heading correction
     if hdg_bin_min_samples is None:
         hdg_bin_min_samples=10 # min number of samples per bin for head correction
-    
+
     ## bt_vel should probably get promoted to an optional field of AdcpData
     #  likewise for heading
     #  Some of this may also have to change depending on info from Dave
@@ -1264,7 +1297,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     #  the .r files we have do not have the transformed bottom track info,
     #  but processing them with winriver to get a .p file performs this
     #  transformation - I think Dave will supply code to do this in matlab/python)
-    
+
     # These vars are modified during processing; we therefore need copies
     mtime = np.copy(mtime_in)
     hdg = np.copy(hdg_in)
@@ -1276,8 +1309,8 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     uv_nav = np.concatenate( [ [ [0.0,0.0] ],
                             np.diff(xy,axis=0) / np.diff(86400*mtime)[:,np.newaxis] ],
                             axis=0 )
-    
-    
+
+
     # The comments suggest that this is based on water-column current speed,
     # but it appears to be throwing out data where neither GPS nor bottom track
     # give a speed greater than u_min_bt.  In sample input files u_min_bt = nan,
@@ -1290,41 +1323,41 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         uv_nav=uv_nav[valid]
         hdg=hdg[valid]
         bt_vel = bt_vel[valid]
-        mtime = mtime[valid]        
-    
+        mtime = mtime[valid]
+
     ## heading from compass
     hdg = hdg%360
     #heading based on bottom tracking
     hdg_bt = (180/np.pi)*np.angle( bt_vel[:,1] + 1j*bt_vel[:,0]) % 360
-    
+
     #heading from nav data
     hdg_nav = (180/np.pi)*np.angle(uv_nav[:,1] + 1j*uv_nav[:,0]) % 360
-    
+
     # identify data that need shifting by 2pi --> depends on each data set
     # print "2 pi shift depends on the location/data!"
-    
+
     # remove nans from pool of headings
     bad = np.isnan(hdg) | np.isnan(hdg_bt) | np.isnan(hdg_nav)
     good = np.nonzero(~bad)
     hdg = hdg[good]
     hdg_bt = hdg_bt[good]
-    hdg_nav = hdg_nav[good]    
-    
-    
+    hdg_nav = hdg_nav[good]
+
+
     hdg_bt[hdg_bt-hdg_nav>180] -= 360
-    
+
     #print hdg_bt
-    
+
     #print hdg_nav
-    
+
     # toss data that looks like noise [commented out in head_correct.m]
     # nn=find(~(heada>266 & hdn>266 & hdbt<245));
     # heada = heada(nn) ; hdbt = hdbt(nn) ; hdn = hdn(nn) ; na=na(nn);
-    
+
     # bin nav and bottom track data to get deviation.
     #hdg_nav_sorted = np.sort(hdg_nav)
-    
-    # transition points 
+
+    # transition points
     #bin_centers = np.arange( hdg_bin_size/2.0,
     bin_centers = np.arange( hdg_nav.min() + hdg_bin_size/2.0,
                             hdg_nav.max() - hdg_bin_size/2.0,
@@ -1336,7 +1369,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     #print 'bin_centers:',bin_centers
     #print 'hdg_to_bins:',hdg_to_bins
     #print 'hdg_nav:',hdg_nav
-  
+
     Nbins = len(bin_breaks)
     hdg_bt_bin_mean =   np.zeros(Nbins,np.float64)
 
@@ -1359,7 +1392,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
             #hdg_bt_bin_stddev[bin_idx] = ssm.circstd(hdg_bt_in_bin*np.pi/180)*180/np.pi
 
             hdg_bt_bin_mean[bin_idx] = ssm.circmean(hdg_bt_in_bin*np.pi/180)*180/np.pi
-            #print 'hdg_bt_in_bin',bin_idx,hdg_bt_in_bin                       
+            #print 'hdg_bt_in_bin',bin_idx,hdg_bt_in_bin
             hdg_bt_bin_stddev[bin_idx] = ssm.circstd(hdg_bt_in_bin*np.pi/180)*180/np.pi
 
             #if hdg_bt_bin_mean[bin_idx] < 0:
@@ -1368,8 +1401,8 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         else:
             #don't keep if small sample size
             hdg_bt_bin_stddev[bin_idx] = np.nan
-            hdg_bt_bin_mean[bin_idx]   = np.nan  
-    
+            hdg_bt_bin_mean[bin_idx]   = np.nan
+
     # pull headings to below 360 degrees
     hdg_bt_bin_mean = hdg_bt_bin_mean%360
 
@@ -1390,7 +1423,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
     #print 'hdg_bt_bin_count:',hdg_bt_bin_count
     #print 'bin_centers:',bin_centers
     #print 'hdg_bt_bin_mean:',hdg_bt_bin_mean
-    delta_hdg = bin_centers-hdg_bt_bin_mean  
+    delta_hdg = bin_centers-hdg_bt_bin_mean
 
     #print 'hdg_bt_bin_mean:',hdg_bt_bin_mean,'delta_hdg',delta_hdg
 
@@ -1398,7 +1431,7 @@ def fit_head_correct(mtime_in,hdg_in,bt_vel_in,xy_in,u_min_bt=None,
         # perform linear fit if data is sparse
         cf = (-nanmean(delta_hdg),None,None)
     else:
-        # perform harmonic fit for data that spans a large number of headings            
+        # perform harmonic fit for data that spans a large number of headings
         (cf,yf) = fit_headerror(hdg_bt_bin_mean,delta_hdg)
 
     print('cf:',cf)
@@ -1416,7 +1449,7 @@ def find_head_correct(hdg_in,
     """
     Makes harmonic heading corrections to input headings, either from supplied
     fit (cf) or my generating a new fit using (mtime_in,hgd_in,bt_vel_in, and
-    xy_in). It requires many compass headings distributed around 0-360 degrees 
+    xy_in). It requires many compass headings distributed around 0-360 degrees
     in order to properly come up with a fit; otherwise compass headings may be worse than before fitting.
     Inputs:
         cf = harmoic fit composed of the [scalar, sine, cosine] components, or None
@@ -1430,13 +1463,13 @@ def find_head_correct(hdg_in,
         mag_dec = magnetic declination, in degrees, or None
     Output:
         Fitted heading difference from hdg_in, shape [n]
-    """    
+    """
     # find correction factor if none it supplied. This may be inaccurate for
     # a single ADCP transect; normally it requires a large amount of data.
     if cf is None:
-        
+
         cf = np.zeros(3,dtype=np.float64)
-        
+
         if mag_dec is not None:
             print('No fitted heading correction found - performing single magnetic declination correction')
             cf[0] = mag_dec
@@ -1455,7 +1488,36 @@ def find_head_correct(hdg_in,
     return cf[0] + cf[1]*np.cos((np.pi/180)*hdg_in) + cf[2]*np.sin((np.pi/180)*hdg_in)
 
 
-def coordinate_transform(xy_in,in_srs,xy_srs,interp_nans=False):
+def coordinate_transform(xy_in, in_srs, xy_srs, interp_nans=False):
+    """
+    Tranforms (re-projects) coordinates xy_in (with EPSG projection in_srs) to
+    new projection xy_srs, with optional linear interpolation of missing values.
+    Inputs:
+        xy_in = 2D numpy array, projected positions, shape [n,2]
+        in_srs = EPSG code of xy_in positions [str]
+        xy_srs = output EPSG code [str]
+        interp_nans = True: interpolate nans in output positions, False: do nothing
+    Output:
+        xy = 2D numpy array, re-projected positions, shape [n,2]
+    """
+    transformer = Transformer.from_crs(in_srs, xy_srs)
+
+    xy = np.asarray([transformer.transform(lat, lon) for lon, lat in xy_in])
+
+    # interpolate nans if needed
+    if interp_nans:
+        if (np.sum(np.sum(np.isnan(xy_in))) > 0):
+            try:
+                xy[:, 0] = interp_nans_1d(xy[:, 0])
+                xy[:, 1] = interp_nans_1d(xy[:, 1])
+            except:
+                print('lonlat_to_xy: Not enough valid navigation locations to fill NaNs')
+                raise
+
+    return xy
+
+
+def coordinate_transform_osr(xy_in,in_srs,xy_srs,interp_nans=False):
     """
     Tranforms (re-projects) coordinates xy_in (with EPSG projection in_srs) to
     new projection xy_srs, with optional linear interpolation of missing values.
@@ -1469,11 +1531,11 @@ def coordinate_transform(xy_in,in_srs,xy_srs,interp_nans=False):
     """
     from_srs = osr.SpatialReference() ; from_srs.SetFromUserInput(in_srs)
     to_srs = osr.SpatialReference() ; to_srs.SetFromUserInput(xy_srs)
-    
+
     xform = osr.CoordinateTransformation(from_srs,to_srs)
     n_points,temp = np.shape(xy_in)
     xy = np.zeros((n_points,2), np.float64)
-    
+
     for i in range(n_points):
         x,y,z = xform.TransformPoint(xy_in[i,0],xy_in[i,1],0)
         xy[i] = [x,y]
@@ -1487,7 +1549,7 @@ def coordinate_transform(xy_in,in_srs,xy_srs,interp_nans=False):
             except:
                 print('lonlat_to_xy: Not enough valid navigation locations to fill NaNs')
                 raise
-    
+
     return xy
 
 
@@ -1518,14 +1580,14 @@ def rotate_velocity(delta,vE_in,vN_in):
         else:
             if len(np.shape(delta)) == 1:
                 delta1 = np.array([delta]).T  # transpose to vertical
-            delta1 = np.ones(nbins,np.float64)*delta1 # generate 2D delta array        
+            delta1 = np.ones(nbins,np.float64)*delta1 # generate 2D delta array
     # 1D velocity vectors
-    elif len(dims) == 1:      
+    elif len(dims) == 1:
         ne = dims[0]
         if np.size(delta) != ne and np.size(delta) != 1:
             error_dims = 1
         elif np.size(delta) == 1:
-            delta1 = np.ones(ne,np.float64)*delta  # create array            
+            delta1 = np.ones(ne,np.float64)*delta  # create array
     # scalar velocities
     elif len(dims) == 0:
         if np.size(delta) > 1:
@@ -1535,7 +1597,7 @@ def rotate_velocity(delta,vE_in,vN_in):
         print("Error in rotate_velocity: delta is not mappable to velocities.")
         print("Check sizes of input delta and velocity.")
         raise ValueError
-    
+
     # need to coorect for the fact that sometimes there are fewer headers than velocities!
     vE = np.cos(delta1)*vE_in + np.sin(delta1)*vN_in
     vN = -np.sin(delta1)*vE_in + np.cos(delta1)*vN_in
@@ -1544,7 +1606,7 @@ def rotate_velocity(delta,vE_in,vN_in):
 
 def find_sidelobes(fsidelobe,bt_depth,elev):
     """
-    Finds near-bottom cells that may have side lobe problems 
+    Finds near-bottom cells that may have side lobe problems
     fSidelobe=0.10; used 15% in past, but Carr and Rehmann use 6%
     Inputs:
         fsidelobe = fraction of cells closer than bottom/valid range cosidered bad data
@@ -1559,10 +1621,10 @@ def find_sidelobes(fsidelobe,bt_depth,elev):
     zz = ranges_loc * np.ones([nens,1])  # generate array of ranges
     depth = -1.0*bt_depth.T  # need rank-2 array so we can transpose it
     return np.greater(zz,(1-fsidelobe)*np.ones([nbins]) * depth) # identify where depth is too great
-    
 
 
-def find_sd_greater(nparray,elev,sd=3,axis=1):
+
+def find_sd_greater(nparray,sd=3,axis=1):
     """
     Find outliers in nparray > sd, with sd generated along nparray(axis),
     Inputs:
@@ -1579,13 +1641,13 @@ def find_sd_greater(nparray,elev,sd=3,axis=1):
         test = sd*np.ones([vbins])*vsig + np.ones([vbins])*np.array([nanmean(nparray,1)]).T
     else:
         vsig = np.array([np.nanstd(nparray)])
-        test = sd*np.ones((nens,1))*vsig + np.ones((nens,1))*np.array([nanmean(nparray)])    
-    return np.greater(nparray,test) 
+        test = sd*np.ones((nens,1))*vsig + np.ones((nens,1))*np.array([nanmean(nparray)])
+    return np.greater(nparray,test)
 
 
 def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_fraction=0.05):
     """
-    Throw out outliers and fill in gaps based upon standard deviation - 
+    Throw out outliers and fill in gaps based upon standard deviation -
     typical to use 3 standard deviations (sd=3)
     Inputs:
         nparray = 2D numpy array
@@ -1598,7 +1660,7 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
     Output:
         new_array = numpy 2D array with rm values removed, and optionally interpolated
     """
-    
+
     # generate warning if neccessary
     good_vels = np.sum(np.sum(~np.isnan(nparray)))
     fraction_dropped = np.sum(rm) / good_vels
@@ -1637,7 +1699,11 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
             # interpolate in 1st dimension of new_array
             for m in range(len(i)):
                 nn=np.nonzero(~np.isnan(new_array[:,j[m]]))
-                new_interp[i[m],j[m]] = np.interp(elev[i[m]],elev[nn],np.squeeze(new_array[nn,j[m]]))
+                good_data = np.squeeze(new_array[nn,j[m]])
+                if np.any(np.isfinite(good_data)):
+                    new_interp[i[m],j[m]] = np.interp(elev[i[m]],elev[nn],good_data)
+                else:
+                    new_interp[i[m],j[m]] = np.nan
 
         new_array = new_interp
 
@@ -1647,12 +1713,12 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
 def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
     """
     Appends array ar2 to ar1 along the matching dimension given in shapes. If
-    either of the arrays are singular or None, the returned array will be 
+    either of the arrays are singular or None, the returned array will be
     filled with the single value, or NaNs according to the given shape.
     Inputs:
         ar1 = numpy array
         ar1_shape = desired shape of ar1 value(s)
-        ar2 = numpy arry to append to ar1
+        ar2 = numpy array to append to ar1
         ar2_shape = desired shape of ar1 value(s)
     Output:
         numpy array or shape ar1+ar2
@@ -1665,7 +1731,7 @@ def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
         print("append_array_w_fill: input array must have the same number of dimensions")
         raise ValueError
     axis = None
-    for i in range(len(s1)):       
+    for i in range(len(s1)):
         if s1[i] != s2[i]:
             axis = i
             break
@@ -1679,7 +1745,7 @@ def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
 
 def check_if_array_and_expand(pa,out_shape):
     """
-    Checks an input value 'pa' (potential array) to be sure it is of shape 
+    Checks an input value 'pa' (potential array) to be sure it is of shape
     "out_shape."  If it is not, throw error.  If pa is a scalar, attempt
     to return an array of shape out_shape of the type and value of pa.  If pa
     is None, returns an array of NaNs in out_shape.
@@ -1707,7 +1773,7 @@ def check_if_array_and_expand(pa,out_shape):
 
 def kernel_smooth(kernel_size,nparray):
     """
-    Uses a nan-safe boxcar/uniform filter to smooth the data.  
+    Uses a nan-safe boxcar/uniform filter to smooth the data.
     Smooth_kernel must be an odd integer >= 3
     Inputs:
         kernel_size = odd integer >= 3
@@ -1715,34 +1781,40 @@ def kernel_smooth(kernel_size,nparray):
     Output:
         nparray_out = smoothed nparray
     """
-    
+
     #from scipy.ndimage.filters import uniform_filter as boxcar
     #import convolve_nd
-    
+
     if kernel_size < 3 or kernel_size > min(np.shape(nparray)):
         print('Error: kernel_size must be between 3 and the smallest array dimension')
-        return 0.0    
-    kernel = np.ones([kernel_size,kernel_size])        
-    nparray_out = np.copy(nparray)    
+        return 0.0
+    kernel = np.ones([kernel_size,kernel_size]) # uniform/blur filter only I guess
+    nparray_out = np.copy(nparray)
     nn = np.isnan(nparray)
+
     nparray_out = convolvend(nparray_out,kernel,
-                             interpolate_nan=True,
-                             normalize_kernel=True,
-                             ignore_edge_zeros=True)
+                            interpolate_nan=True,
+                            normalize_kernel=True,
+                            ignore_edge_zeros=True)
+
+    # --- scipy convole doesn't handle edges well, seems somewhat different than convolvend
+    #kernel = kernel/np.sum(kernel) # normalize
+    #nparray_out = convolve(nparray_out, kernel, mode='constant', cval=0.0)
+
     nparray_out[nn] = np.nan
     return nparray_out
-    
+
 
 def find_xy_transect_loops(xy,xy_range=None,pline=None):
     """
-    Uses x-y postion/projection to a line to determine where a sequence of 
+    Uses x-y postion/projection to a line to determine where a sequence of
     positions folds back on itself.
     Inputs:
         xy = 2D numpy array, projected x/y positions of headings{m}, shape [n,2]
         xy_range = projected distance between points
         pline = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
     Output:
-        boolean 1D array of xy positions that are fold back compared to the 
+        boolean 1D array of xy positions that are fold back compared to the
         mean path
     """
     if (xy_range is None):
@@ -1766,9 +1838,9 @@ def find_extrapolated_grid(n_ens,elev,bot_depth=None,adcp_depth=None):
         elev = bin center evelation of current grid
         bot_depth = scalar or 1D nparray of shape [n_ens] descibing bot_depth, or None
         adcp_depth = scalar descibing the depth of the adcp face underwater - useful
-          for downward and upward looking deployments. 
+          for downward and upward looking deployments.
     Output:
-        zex = new elev, descibing bin center elevations of new grid 
+        zex = new elev, descibing bin center elevations of new grid
         depth = max valid range elevation from transducer
         new_bins = new bin elevations nearest transducer
     """
@@ -1789,7 +1861,7 @@ def find_extrapolated_grid(n_ens,elev,bot_depth=None,adcp_depth=None):
         if len(bt_shape) > 1 and bt_shape[0] == 1:
             depth = bot_depth.T
         else:
-            depth = np.array([bot_depth]).T        
+            depth = np.array([bot_depth]).T
     return (zex, depth, new_bins)
 
 
@@ -1826,12 +1898,12 @@ def extrapolate_boundaries(velocity,elev,ex_evel,depth,new_bins):
     zztemp = -ex_evel*np.ones((n_ens,1))
     for i in range(n_vels):
         new_vel_shape1 = np.column_stack((np.nan*np.ones((n_ens,np.size(new_bins))),
-                                       vel_in[:,:,i]))                
+                                       vel_in[:,:,i]))
         ex_velocity1 = fillProParab(new_vel_shape1,zztemp,depth,0)  # don't need to flip arrays b/c they are already flipped relative to matlab
         ex_velocity1[zztemp < np.ones(len(ex_evel))*depth] = np.nan  # depths here are negative
         ex_velocity[:,:,i] = ex_velocity1
     if n_vels == 1:
-        ex_velocity = np.squeeze(ex_velocity,axis=2)    
+        ex_velocity = np.squeeze(ex_velocity,axis=2)
     return ex_velocity
 
 
@@ -1848,15 +1920,15 @@ def create_depth_mask(elev,depths):
     nens = np.size(depths)
     vbins = np.size(elev)
     bt_local = np.copy(depths)
-    
+
     d1 = np.zeros(vbins,np.float64)
     half = abs(elev[1]-elev[0])/2
     d1[0] = min(abs(elev[0]),half) + half
     for i in range(1,vbins-1):
         half_old = half
-        half = abs(elev[i+1]-elev[i])/2              
+        half = abs(elev[i+1]-elev[i])/2
         d1[i] = half + half_old
-    d1[vbins-1] = half*2            
+    d1[vbins-1] = half*2
     depth_mask = np.tile(d1,(nens,1))
     zz = elev * np.ones([nens,1])  # generate array of ranges
     if (np.shape(bt_local) < 2):
@@ -1864,10 +1936,10 @@ def create_depth_mask(elev,depths):
     d2 = bt_local.T  # need rank-2 array so we can transpose it
     ii = np.greater(zz,np.ones([vbins]) * d2) # identify where depth is too great
     depth_mask[ii] = 0
-    return depth_mask       
-   
+    return depth_mask
 
-def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):        
+
+def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
     """
     Calculates the discharge(flow) by finding the cross product of the water
     and bottom track velocities. **elev and bt_depth are positive**
@@ -1884,15 +1956,15 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
         Uflow = Total cross-sectional flow {m^3/s}
         total_survey_area = ensemble-to-ensemble 2D survey area {m^2}
         total_cross_sectional_area = total valid survey area in U-direction {m^2}
-    """      
+    """
     # spread bottom track velocities across all bins
     nens,vbins = np.shape(vU)
     btU =  np.ones(vbins)*np.array([btU_in]).T
-    btV =  np.ones(vbins)*np.array([btV_in]).T 
+    btV =  np.ones(vbins)*np.array([btV_in]).T
     cp_velocity = vU*btV - vV*btU # cross product velocities
-    
+
      # construct depth matrix
-    depths = create_depth_mask(elev,bt_depth)  
+    depths = create_depth_mask(elev,bt_depth)
 
     # construct time matrix
     time = np.zeros(nens,np.float64)
@@ -1900,22 +1972,22 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
     time[0] = (abs(mtime[0]-mtime[1]))/2.0
     time[nens-1] = (abs(mtime[nens-2]-mtime[nens-1]))/2.0
     for i in range(1,nens-1):
-        time[i] = (abs(mtime[i-1] - mtime[i+1]))/2.0                                                
-    times = np.tile(time,(vbins,1))            
-    times = times.T*3600*24 # rotate, convert from days to seconds  
-  
+        time[i] = (abs(mtime[i-1] - mtime[i+1]))/2.0
+    times = np.tile(time,(vbins,1))
+    times = times.T*3600*24 # rotate, convert from days to seconds
+
     # integrate flow, reverse if heading is backwards compared to alignment
     # axis
-    flow = np.abs(cp_velocity*(times*depths))      
+    flow = np.abs(cp_velocity*(times*depths))
     bt_mag = np.sqrt(btU**2+btV**2)
     survey_area = times*depths*bt_mag
     nn = np.logical_or(np.isnan(vU),np.isnan(vV))
     survey_area[nn] = np.nan
     total_survey_area = np.nansum(np.nansum(survey_area))
-    cross_sectional_area = survey_area*(btV/bt_mag) # fraction of survey in U direction            
+    cross_sectional_area = survey_area*(btV/bt_mag) # fraction of survey in U direction
     total_cross_sectional_area = \
     np.abs(np.nansum(np.nansum(cross_sectional_area)))
-    
+
     Uflow = np.nansum(np.nansum(flow))
     U = Uflow/total_cross_sectional_area
 
@@ -1924,17 +1996,17 @@ def calc_crossproduct_flow(vU,vV,btU_in,btV_in,elev,bt_depth,mtime):
 
 def unweight_xy_positions(xy,tolerance=5.0):
     """
-    Sometimes you want to reduce the number of points on a line segment, for 
-    instance if you want to calculate a geometric centroid, but somehow 
-    there was lot of loitering in one place in xy space. 
+    Sometimes you want to reduce the number of points on a line segment, for
+    instance if you want to calculate a geometric centroid, but somehow
+    there was lot of loitering in one place in xy space.
     Inputs:
         xy = 2D numpy array, projected x/y positions, shape [n,2]
     Returns:
         2D numpy array, projected x/y positions with reduced n in 1st dimension
-    """      
-    
+    """
+
     n_xy, two = np.shape(xy)
-    included = np.ones(n_xy,np.bool)
+    included = np.ones(n_xy,bool)
     test_xy = xy[0,:]
     for i in range(1,n_xy):
         if find_line_distance(test_xy,xy[i,:]) > tolerance:
@@ -1946,14 +2018,14 @@ def unweight_xy_positions(xy,tolerance=5.0):
 
 def map_flow_to_line(in_xy,x_flow,y_flow):
     """
-    Finds the mean flow direction, and then returns a line (defined by two 
+    Finds the mean flow direction, and then returns a line (defined by two
     endpoints) that is normal to the flow, and intersects the centroid of
     the points given in xy.
     Inputs:
         xy = x-y locations , 2D array of shape [n,2], where [:,0] is x and [:,1] is y
-        x_flow = array of volumetric flows in the x direction, corresponding to 
+        x_flow = array of volumetric flows in the x direction, corresponding to
           the locations given in xy
-        x_flow = array of volumetric flows in the y direction, corresponding to 
+        x_flow = array of volumetric flows in the y direction, corresponding to
           the locations given in xy
     Output:
         numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
@@ -2009,8 +2081,8 @@ def map_flow_to_line(in_xy,x_flow,y_flow):
 #    #maxi = np.argmax(mag_fit)
 #    mini = np.argmin(xd)
 #    maxi = np.argmax(xd)
-#    return np.array([[xy[mini,0],y_fit[mini]],[xy[maxi,0],y_fit[maxi]]])    
-#    
+#    return np.array([[xy[mini,0],y_fit[mini]],[xy[maxi,0],y_fit[maxi]]])
+#
 
 def map_xy_to_line(xy,unweight_xy=True):
     """
@@ -2029,7 +2101,7 @@ def map_xy_to_line(xy,unweight_xy=True):
     coefs_1[0] = 1.0/coefs_1[0]
     coefs_1[1] = -1.0*coefs_1[0]*coefs_1[1]
     #print 'coefs:',coefs
-    #print 'coefs_1:',coefs_1    
+    #print 'coefs_1:',coefs_1
     x_fit = np.polyval(coefs,xy[:,1])
     y_fit = np.polyval(coefs_1,xy[:,0])
     if np.min(x_fit) > np.min(xy[:,0]):
@@ -2086,7 +2158,7 @@ def find_line_distance(in_xy1,in_xy2):
         xy2 = x-y locations , 2D array of shape [n,2], where [:,0] is x and [:,1] is y
     Output:
         numpy array of line defined by 2 points: [[x1,y1],[x2,y2]]
-    """      
+    """
     if len(np.shape(in_xy1)) == 1:
         xy1 = np.array([in_xy1])
     else:
@@ -2097,11 +2169,11 @@ def find_line_distance(in_xy1,in_xy2):
         xy2 = in_xy2
     return np.sqrt((xy2[:,0]-xy1[:,0])**2 + \
                    (xy2[:,1]-xy1[:,1])**2)
-    
+
 
 def find_projection_distances(xy,pline=None):
     """
-    Finds the distances between profiles(dd) along either a linear fit of 
+    Finds the distances between profiles(dd) along either a linear fit of
     transect positions, or along a supplied line given by the pline.
     Also returns the x (xd) and y (yd) distances of xy points along this axis
     Inputs:
@@ -2118,20 +2190,20 @@ def find_projection_distances(xy,pline=None):
         xy_line = map_xy_to_line(xy)
     else:
         xy_line = pline
-    x0 = xy_line[0,0]                
-    y0 = xy_line[0,1]                
-    x1 = xy_line[1,0]                
-    y1 = xy_line[1,1]            
+    x0 = xy_line[0,0]
+    y0 = xy_line[0,1]
+    x1 = xy_line[1,0]
+    y1 = xy_line[1,1]
     x00 = x1 - x0
     y00 = y1 - y0
     xd = xy[:,0] - x0
     yd = xy[:,1] - y0
-    
+
     #print 'x0 x1 xy[0,0] xy[-1,0] x00 xd[0] xd[-1]'
     #print x0, x1, xy[0,0], xy[-1,0], x00, xd[0], xd[-1]
     #print 'y0 y1 xy[0,1] xy[-1,1] y00 yd[0] yd[-1]'
     #print y0, y1, xy[0,1], xy[-1,1], y00, yd[0], yd[-1]
-    
+
     # below sourced from: http://stackoverflow.com/questions/3120357/get-closest-point-to-a-line
     xy_line_d_sq = x00*x00 + y00*y00
     dot_product = xd*x00 + yd*y00
@@ -2143,14 +2215,14 @@ def find_projection_distances(xy,pline=None):
     #plt.scatter(closest_points[:,0],closest_points[:,1])
     #plt.show()
     weird_line_format = np.array(createLine(xy_line[0,:],xy_line[1,:]))
-    
+
     dd = linePosition(closest_points,weird_line_format)*np.sqrt(xy_line_d_sq)
     return closest_points[:,0],closest_points[:,1],dd,xy_line
-    
+
 
 def find_projection_distances_old(xy,pline=None):
     """
-    Finds the distances between profiles(dd) along either a linear fit of 
+    Finds the distances between profiles(dd) along either a linear fit of
     transect positions, or along a supplied line given by the pline.
     Also returns the x (xd) and y (yd) distances of xy points along this axis
     Inputs:
@@ -2166,28 +2238,28 @@ def find_projection_distances_old(xy,pline=None):
         xy_line_point = map_xy_to_line(xy)
     else:
         xy_line_point = pline
-    x0 = xy_line_point[0,0]                
-    y0 = xy_line_point[0,1]                
+    x0 = xy_line_point[0,0]
+    y0 = xy_line_point[0,1]
     x00 = xy_line_point[1,0] - x0
     y00 = xy_line_point[1,1] - y0
     xd = xy[:,0] - x0
     yd = xy[:,1] - y0
     test_flip = False
-    
+
     plot_line = np.array(createLine((0.0,0.0),(x00,y00)))
     d_plot_line = np.sqrt(plot_line[2]**2 + plot_line[3]**2)
 
-    # map profiles to line                             
+    # map profiles to line
     points = np.zeros((len(xd),2),np.float64)
     points[:,0] =  xd
     points[:,1] =  yd
     dd = linePosition(points,plot_line)*d_plot_line
-    #dd = linePosition(points,plot_line)   
+    #dd = linePosition(points,plot_line)
     if test_flip:
         if yd1[maxi] < yd1[mini]:
             #flip it
             dd = np.max(dd) - dd
-    
+
     #fig=plt.figure()
     #plt.scatter(xd,yd)
     #plt.show()
@@ -2197,7 +2269,7 @@ def find_projection_distances_old(xy,pline=None):
 def new_xy_grid_old(xy,z,dx,dz,pline=None,fit_to_xy=True):
     """
     Generates a regular grid (staight in the xy plane) with spacing
-    set by dx and dy, using the same distance units as the current projection. 
+    set by dx and dy, using the same distance units as the current projection.
     Generates a linear fit, or fits to input pline.
     Inputs:
         xy = x-y locations , 2D array of shape [ne,2], where [:,0] is x and [:,1] is y
@@ -2228,7 +2300,7 @@ def new_xy_grid_old(xy,z,dx,dz,pline=None,fit_to_xy=True):
         my_dx = -dx
         tmp = dd_end
         dd_end = dd_start
-        dd_start = tmp     
+        dd_start = tmp
     # find gridding dimensions
     if pline is not None and not fit_to_xy:
         x0 = pline[0,0]
@@ -2258,13 +2330,43 @@ def new_xy_grid_old(xy,z,dx,dz,pline=None,fit_to_xy=True):
         xy_new[:,0] = xy_new_range*np.cos(grid_angle) + x0 # back to projection x - might be offset by up to dx
         xy_new[:,1] = xy_new_range*np.sin(grid_angle) + y0 # back to projection y - might be offset by up to dy
     z_new = np.arange(z[0],z[-1],my_dz)  # find z1
-    
+
     return (dd,xy_new_range,xy_new,z_new)
 
-def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
+
+def cumulative_distance(points):
+    """
+    Calculate the cumulative distance along a line given a list of (x, y) points.
+
+    :param points: List of tuples representing the (x, y) coordinates of the points.
+    :return: List of cumulative distances from the start point to each point in the list.
+    """
+    def distance(p1, p2):
+        if p1[0] == p2[0] and p1[1] == p2[1]:
+            return 0.0
+        return np.sqrt((p2[0] - p1[0]) ** 2 + (p2[1] - p1[1]) ** 2)
+
+    cumulative_distances = [0]  # Start with 0 distance at the first point
+
+    for i in range(1, len(points)):
+        dist = distance(points[i - 1], points[i])
+        cumulative_distances.append(cumulative_distances[-1] + dist)
+
+    return np.asarray(cumulative_distances)
+
+# returns
+def interpolate_points_along_line(line, distance):
+    length = line.length
+    num_points = int(length // distance)
+    distances = np.linspace(0, length, num_points + 1)
+    points = [line.interpolate(d) for d in distances]
+    return points
+
+
+def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True,nonlinear=False):
     """
     Generates a regular grid (staight in the xy plane) with spacing
-    set by dx and dy, using the same distance units as the current projection. 
+    set by dx and dy, using the same distance units as the current projection.
     Generates a linear fit, or fits to input pline.
     Inputs:
         xy = x-y locations , 2D array of shape [ne,2], where [:,0] is x and [:,1] is y
@@ -2278,6 +2380,7 @@ def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
         xy_new = xy positions of new grid shape, 2D numpy array
         z_new = z positions of new grid, 1D numpy array
     """
+
     # reverse dz if necessary
     z_is_negative = np.less(nanmean(z),0)
     if z_is_negative == (dz < 0):
@@ -2286,36 +2389,53 @@ def new_xy_grid(xy,z,dx,dz,pline=None,fit_to_xy=True):
         my_dz = -dz
     z_new = np.arange(z[0],z[-1],my_dz)
 
-    xd,yd,dd,pline = find_projection_distances(xy,pline=pline)
-    # find gridding dimensions
-    x0 = pline[0,0]
-    y0 = pline[0,1]
-    x00 = pline[1,0]-pline[0,0]
-    y00 = pline[1,1]-pline[0,1]
-    pline_distance = np.sqrt(x00**2 + y00**2)
-    xy_new_range = np.arange(0,pline_distance,np.abs(dx))
-    grid_angle = np.arctan2(y00,x00)
-    xy_new = np.zeros((np.size(xy_new_range),2),dtype=np.float64)
-    xy_new[:,0] = xy_new_range*np.cos(grid_angle) + x0 # back to projection x - might be offset by up to dx
-    xy_new[:,1] = xy_new_range*np.sin(grid_angle) + y0 # back to projection y - might be offset by up to dy
-    tmpx, tmpy, xy_new_range,pline = find_projection_distances(xy_new,pline=pline)
-    if fit_to_xy:
-        # remove cells beyond dd
-        dd_start = np.min(dd)
-        dd_end = np.max(dd)
-        fitted = np.ones(np.size(xy_new_range),np.bool)
-        for i in range(np.size(xy_new_range)):
-            if xy_new_range[i] < dd_start or xy_new_range[i] > dd_end:
-                fitted[i] = False
-        return (dd,xy_new_range[fitted],xy_new[fitted,:],z_new)
+    if nonlinear:
+        # just interpolate xy with regular spacing along track, instead of fitting to a line
+        from shapely.geometry import LineString
+        dx_abs = np.abs(dx)
+        line = LineString(xy)
+        num_points = int(line.length // dx_abs)
+        xy_new_range = np.arange(0, num_points*dx_abs, dx_abs)  # distances along polyline
+        xy_new = np.zeros((num_points, 2), dtype=np.float64)
+        for i, d in enumerate(xy_new_range):
+            p = line.interpolate(d)
+            xy_new[i, 0] = p.x
+            xy_new[i, 1] = p.y
+        dd = cumulative_distance(xy)
+
     else:
-        return (dd,xy_new_range,xy_new,z_new)
+        xd,yd,dd,pline = find_projection_distances(xy,pline=pline)
+        # find gridding dimensions
+        x0 = pline[0,0]
+        y0 = pline[0,1]
+        x00 = pline[1,0]-pline[0,0]
+        y00 = pline[1,1]-pline[0,1]
+        pline_distance = np.sqrt(x00**2 + y00**2)
+        xy_new_range = np.arange(0,pline_distance,np.abs(dx))
+        grid_angle = np.arctan2(y00,x00)
+        xy_new = np.zeros((np.size(xy_new_range),2),dtype=np.float64)
+        xy_new[:,0] = xy_new_range*np.cos(grid_angle) + x0 # back to projection x - might be offset by up to dx
+        xy_new[:,1] = xy_new_range*np.sin(grid_angle) + y0 # back to projection y - might be offset by up to dy
+        tmpx, tmpy, xy_new_range,pline = find_projection_distances(xy_new,pline=pline)
+        if fit_to_xy:
+            # remove cells beyond dd
+            dd_start = np.min(dd)
+            dd_end = np.max(dd)
+            fitted = np.ones(np.size(xy_new_range),np.bool)
+            for i in range(np.size(xy_new_range)):
+                if xy_new_range[i] < dd_start or xy_new_range[i] > dd_end:
+                    fitted[i] = False
+            #return (dd,xy_new_range[fitted],xy_new[fitted,:],z_new)
+            xy_new_range = xy_new_range[fitted]
+            xy_new = xy_new[fitted,:]
+
+    return (dd, xy_new_range, xy_new, z_new)
 
 
 def newer_new_xy_grid(xy,z,dx,dz,pline=None):
     """
     Generates a regular grid (staight in the xy plane) with spacing
-    set by dx and dy, using the same distance units as the current projection. 
+    set by dx and dy, using the same distance units as the current projection.
     Generates a linear fit, or fits to input pline.
     Inputs:
         xy = x-y locations , 2D array of shape [ne,2], where [:,0] is x and [:,1] is y
@@ -2344,7 +2464,7 @@ def newer_new_xy_grid(xy,z,dx,dz,pline=None):
         my_dx = -dx
         tmp = dd_end
         dd_end = dd_start
-        dd_start = tmp     
+        dd_start = tmp
     # find gridding dimensions
     xy_new_range = np.arange(dd_start,dd_end,my_dx)
     z_new = np.arange(z[0],z[-1],my_dz)  # find z1
@@ -2359,7 +2479,7 @@ def newer_new_xy_grid(xy,z,dx,dz,pline=None):
     xy_new = np.zeros((np.size(xy_new_range),2),dtype=np.float64)
     xy_new[:,0] = xy_new_range*np.cos(grid_angle) + x0 # back to projection x - might be offset by up to dx
     xy_new[:,1] = xy_new_range*np.sin(grid_angle) + y0 # back to projection y - might be offset by up to dy
-    
+
     return (dd,xy_new_range,xy_new,z_new)
 
 
@@ -2399,10 +2519,10 @@ def xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
           known by scipy.interpolate
     Returns:
         nparray values regridded to shape [ne2],1D or [ne2,nb2],2D
-    """   
+    """
     if kind == 'bin average':
         # this fuction optionally returns a tuple, we only want 1st element which is means
-        return  xy_bin_average(nparray,xy,xy_new,z,z_new,pre_calcs,
+        return xy_bin_average(nparray,xy,xy_new,z,z_new,pre_calcs,
                                return_stats=False,sd_drop=sd_drop)[0]
     else:
         return xy_interpolate(nparray,xy,xy_new,z,z_new,pre_calcs,kind)
@@ -2427,14 +2547,14 @@ def xy_regrid_multiple(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
     Returns:
         nparray values regridded to shape [ne2],1D or [ne2,nb2],2D
     """
-    
+
     dims = np.shape(nparray)
-    
-    if len(np.shape(xy_new)) > 1:   
+
+    if len(np.shape(xy_new)) > 1:
         new_dim_xy = np.size(xy_new[:,0])
     else:
         new_dim_xy = np.size(xy_new)
-    
+
     if len(dims) == 1:
         print('xy_regrid_multiple: nparray must be 2D or 3D')
         raise ValueError
@@ -2480,9 +2600,9 @@ def un_flip_bin_average(xy_range,z,avg):
         xy = xy grid edge positions, shape [xyb]
         z = z locations, 1D array of shape [nb]
         z_bins = z grid edge positions, shape [zb]
-        avg = list or arrays to be conditionally flipped 
+        avg = list or arrays to be conditionally flipped
     Returns:
-        list of input arrays avg,conditinally flipped   
+        list of input arrays avg,conditinally flipped
     """
     flipped = []
     ud = (xy_range[-1]-xy_range[0]) < 0
@@ -2520,7 +2640,7 @@ def new_t_grid(t,z,dt,dz):
         my_dz = -dz
     z_new = np.arange(z[0],z[-1],my_dz)
     return (t_new,z_new)
-    
+
 def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=0):
     """
     Bins  input values in the 1D or 2D nparray 'values' into the bins with
@@ -2538,13 +2658,13 @@ def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=
         bin_mean = values bin-averaged to shape [xyb] or [xyb,zb]
         if return_stats = True, returns (bin_mean, bin_n, bin_sd),
         all of shape [xyb] or [xyb,zb]
-    """        
+    """
     z_not_none = False
     if z is not None:
         z_not_none = True
 
     bin_mean, bin_n = calc_bin_mean_n(xy,xy_bins,values,z,z_bins)
-            
+
     if return_stats or sd_drop:
         bin_sd,xy_bin_num,z_bin_num = \
           calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n)
@@ -2565,14 +2685,14 @@ def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=
             elif i > 0:
                 if values[n] > sd_drop*bin_sd[i]:
                     xy[n],values[n] = (np.nan,np.nan)
-        
+
         # reshape data to remove nan values
         nnan = ~np.isnan(values)
         xy = xy[nnan]
         if z_not_none:
             z = z[nnan]
         values = values[nnan]
- 
+
         bin_mean, bin_n = calc_bin_mean_n(xy,xy_bins,values,z,z_bins)
         if return_stats:
             bin_sd,xy_bin_num,z_bin_num = \
@@ -2580,19 +2700,19 @@ def bin_average(xy,xy_bins,values,z=None,z_bins=None,return_stats=False,sd_drop=
             return (bin_mean, bin_n, bin_sd)
         else:
             return (bin_mean,)
-                  
-        
-def calc_bin_mean_n(xy,xy_bins,values,z=None,z_bins=None): 
- 
+
+
+def calc_bin_mean_n(xy,xy_bins,values,z=None,z_bins=None):
+
     z_not_none = False
     if z is not None:
         z_not_none = True
 
     if z_not_none:
-        # 2D bin average 
+        # 2D bin average
         bin_n, e1, e2 = np.histogram2d(xy,z,bins = (xy_bins,z_bins))
         bin_sum, e1, e2 = np.histogram2d(xy,z,bins = (xy_bins,z_bins),
-                                        weights = values)            
+                                        weights = values)
     else:
         # 1D bin average
         bin_sum, e1 = np.histogram(xy,bins = xy_bins,weights = values)
@@ -2606,7 +2726,7 @@ def calc_bin_mean_n(xy,xy_bins,values,z=None,z_bins=None):
     return (bin_mean, bin_n)
 
 def calc_bin_sd(xy,z,values,xy_bins,z_bins,bin_mean,bin_n):
-    
+
     z_not_none = False
     if z is not None:
         z_not_none = True
@@ -2660,27 +2780,31 @@ def prep_xy_regrid(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None):
         xy_new_range = distance along fitted line, in the direction of the fit line, new grid
         zmesh_new = mesh of z-direction values resulting from meshgrid(), new grid
         xymesh_new = mesh of fitted-xy-direction values resulting from meshgrid(), new grid
-    """   
+    """
     if len(np.shape(nparray)) == 1:
         is_array = False
     elif z is None or z_new is None:
         print('Error - to regrid a 2D array, arguments z and z_new are required')
         raise ValueError
     else:
-        is_array = True       
+        is_array = True
     if pre_calcs is None:
-        # generate projected distances between xy points
-        pline = np.array([[xy_new[0,0],xy_new[0,1]],[xy_new[-1,0],xy_new[-1,1]]])
-        xtemp,ytemp,xy_range,pline = find_projection_distances(xy,pline=pline)
-        xtemp,ytemp,xy_new_range,new_pline = find_projection_distances(xy_new)
-        if is_array:
-            zmesh_new, xymesh_new = np.meshgrid(z_new,xy_new_range)
-            zmesh, xymesh = np.meshgrid(z,xy_range)
-        else:
-            zmesh_new, xymesh_new, zmesh, xymesh = (None,None,None,None)
+        # this should be replaced by new_xy_grid
+        print('Error - new_xy_grid must be pre-calculated')
+        raise ValueError
+
+        # # generate projected distances between xy points
+        # pline = np.array([[xy_new[0,0],xy_new[0,1]],[xy_new[-1,0],xy_new[-1,1]]])
+        # xtemp,ytemp,xy_range,pline = find_projection_distances(xy,pline=pline)
+        # xtemp,ytemp,xy_new_range,new_pline = find_projection_distances(xy_new)
+        # if is_array:
+        #     zmesh_new, xymesh_new = np.meshgrid(z_new,xy_new_range)
+        #     zmesh, xymesh = np.meshgrid(z,xy_range)
+        # else:
+        #     zmesh_new, xymesh_new, zmesh, xymesh = (None,None,None,None)
     else:
         xy_range,zmesh,xymesh,xy_new_range,zmesh_new,xymesh_new = pre_calcs
-    
+
     return (is_array,xy_range,zmesh,xymesh,xy_new_range,zmesh_new,xymesh_new)
 
 
@@ -2704,7 +2828,7 @@ def xy_bin_average(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
         avg = nparray values regridded to shape [ne2],1D or [ne2,nb2],2D
         if return_stats = True, returns (re_grid_nparray, bin_n_nparray, bin_sd_nparray),
         all of shape [ne2] [ne2,nb2]
-    """      
+    """
     (is_array,xy_range,zmesh,xymesh,xy_new_range,zmesh_new,xymesh_new) = \
         prep_xy_regrid(nparray,xy,xy_new,z,z_new,pre_calcs)
 
@@ -2721,7 +2845,7 @@ def xy_bin_average(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,
         valid_data = nparray[nnan]
 
     avg = bin_average(xy_tiled,xy_bins,valid_data,z_tiled,z_bins,
-                      return_stats=False,sd_drop=sd_drop)    
+                      return_stats=False,sd_drop=sd_drop)
     return un_flip_bin_average(xy_new_range,z_new,avg)
 
 
@@ -2741,7 +2865,7 @@ def xy_interpolate(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='cubi
         kind = one of the string options for scipy.interpolate: ['nearest','linear','cubic']
     Returns:
         nparray values regridded to shape [ne2],1D or [ne2,nb2],2D
-    """   
+    """
     griddata_kinds = ['nearest','linear','cubic']
 
     (is_array,xy_range,zmesh,xymesh,xy_new_range,zmesh_new,xymesh_new) = \
@@ -2749,7 +2873,7 @@ def xy_interpolate(nparray,xy,xy_new,z=None,z_new=None,pre_calcs=None,kind='cubi
 
     if kind not in griddata_kinds:
         raise Exception("Unknown regrid kind in xy_interpolate()")
-    
+
     if is_array:
         valid = np.nonzero(~np.isnan(nparray))
         return scipy.interpolate.griddata(zip(xymesh[valid],zmesh[valid]),
@@ -2775,7 +2899,7 @@ def find_mask_from_vector(z,z_values,mask_area):
         mask_area = "above" or "below", describing desired mask location
     Returns:
         numpy boolean array, shape [ne,nb]
-    """      
+    """
     z_values_T = -1.0 * np.array([np.squeeze(z_values)]).T  # need rank-2 array so we can transpose it
     z_values_array = z_values_T * np.ones((1,len(z)))
     z_array = -z * np.ones((len(z_values),1))

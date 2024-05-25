@@ -13,47 +13,7 @@ def warn(msg,fn):
     if warnings[msg][fn]==1:
         print(msg)
 
-
 ll_sign=dict(N=1,S=-1,E=1,W=-1)
-
-def center_to_edge(c,dx_single=None):
-    """
-    take 'cell' center locations c, and infer boundary locations.
-    first/last cells get width of the first/last inter-cell spacing.
-    if there is only one sample and dx_single is specified, use that
-    for width.  otherwise error.
-    """
-    d=np.ones(len(c)+1)
-    d[1:-1] = 0.5*(c[1:] + c[:-1])
-    if len(c)>1:
-        d[0]=c[0]-0.5*(c[1]-c[0])
-        d[-1]=c[-1]+0.5*(c[-1]-c[-2])
-    elif dx_single:
-        d[0]=c[0]-0.5*dx_single
-        d[1]=c[0]+0.5*dx_single
-    else:
-        raise Exception("only a single data point given to center to edge with no dx_single")
-    return d
-
-def nearest(A,x):
-    """ like searchsorted, but return the index of the nearest value,
-    not just the first value greater than x
-    """
-    N=len(A)
-
-    xi_right=np.searchsorted(A,x).clip(0,N-1) # the index of the value to the right of x
-    xi_left=(xi_right-1).clip(0,N-1)
-    dx_right=np.abs(x-A[xi_right])
-    dx_left=np.abs(x-A[xi_left])
-    
-    xi=xi_right
-    sel_left=dx_left < dx_right
-    if xi.ndim:
-        xi[sel_left] = xi_left[sel_left]
-    else:
-        if sel_left:
-            xi=xi_left
-    return xi
 
 
 class Pd0Exception(Exception):
@@ -119,6 +79,7 @@ def decode_system_configuration(config_bytes):
     based on the fixed leader
     """
     conf={}
+
         
     systems=['75-kHz SYSTEM',
              '150-kHz SYSTEM',
@@ -163,7 +124,7 @@ class Pd0Frame(object):
     into a time series, and provide reasonably user-facing interfaces
     to the data
     """
-
+    target_coord_sys='earth'
     def __init__(self,raw_frame,header,offsets,**kwargs):
         """
         raw_frame: the entire ensemble
@@ -336,6 +297,8 @@ class Pd0Frame(object):
             md[n]=f.fixed[n]
 
         # human readable version of the coordinate system
+        # note that this may be altered in concatenate_frames if
+        # velocities are reprojected
         md['coord_sys']=f.coord_transform
 
         md['Nensembles']=len(frames)
@@ -352,6 +315,57 @@ class Pd0Frame(object):
 
     def frame_dtype(self):
         raise Pd0Unsupported("Subclasses must implement frame_dtype()")
+
+    # Coordinate system methods
+    #  matrices to perform the transformation
+    def mat_beam_to_instrument(self):
+        raise Pd0Unsupported("Generic beam to instrument transform not available")
+
+    def mat_instrument_to_earth(self,heading=None,pitch=None,roll=None):
+        """ 
+        return 4x4 matrix for convert instrument coordinates to
+        earth coordinates.
+        heading,pitch,roll: reported angles in degrees
+        """
+        if heading is None:
+            heading=self.heading_deg()
+        if pitch is None:
+            pitch=self.pitch_deg()
+        if roll is None:
+            roll=self.roll_deg()
+
+        # can't just grab self.variable['heading'] and the like because
+        # they need to be scaled.  leave it to the caller
+        heading=np.pi/180 * heading
+        pitch=np.pi/180 * pitch
+        roll=np.pi/180 * roll
+        # apply the 'correction' to pitch
+        pitch=np.arctan(np.tan(pitch)*np.cos(roll))
+        
+        ch=np.cos(heading)
+        sh=np.sin(heading)
+        cp=np.cos(pitch)
+        sp=np.sin(pitch)
+        cr=np.cos(roll)
+        sr=np.sin(roll)
+        one=1.0 # np.ones_like(sr)
+        zero=0.0 # np.zeros_like(sr)
+
+        Mhdg=np.array( [[ch, sh, zero, zero],
+                        [-sh, ch, zero, zero],
+                        [zero  , zero , one, zero],
+                        [zero, zero, zero, one]] )
+        Mpitch=np.array( [[one, zero, zero, zero],
+                          [zero, cp, -sp, zero],
+                          [zero, sp, cp, zero],
+                          [zero, zero, zero, one]] )
+        Mroll=np.array([[cr, zero, sr, zero],
+                        [zero  , one,zero, zero ],
+                        [-sr, zero, cr, zero],
+                        [zero, zero, zero, one]])
+
+        Mhpr=np.einsum('ij...,jk...,kl...->il...', Mhdg,Mpitch,Mroll)
+        return Mhpr
 
         
 class ChannelmasterFrame(Pd0Frame):
@@ -585,13 +599,11 @@ class ChannelmasterFrame(Pd0Frame):
 
         md=cls.metadata(frames)
 
-        # make units explicit and SI
-        md['bin1_distance_m'] = 0.01 * md.pop('bin1_distance_cm')
-        md['cell_length_m'] = 0.01 * md.pop('cell_length') 
-
         # Allocate a single array for the whole dataset
         N=len(frames)
         fdata=np.zeros(N,dtype=frames[0].frame_dtype() )
+
+        # 
 
         # velocity
         all_v=np.concatenate( [f.velocity[None,...] for f in frames], axis=0)
@@ -646,9 +658,6 @@ class ChannelmasterFrame(Pd0Frame):
             # fdata['pct_full']=pct_good[:,:,3]
 
         md['data']=fdata
-
-        md['bin_distances'] = md['bin1_distance_m'] + np.arange(md['Ncells'])*md['cell_length_m']
-
         return md
 
     @classmethod
@@ -794,6 +803,38 @@ class WorkhorseFrame(Pd0Frame):
             # low two bytes - needs some postprocessing
         else:
             super(WorkhorseFrame,self).parse_block(block_idx,block_id,raw)
+
+    def heading_deg(self):
+        return self.variable['heading'] * 0.01
+    def pitch_deg(self):
+        return self.variable['pitch'] * 0.01
+    def roll_deg(self):
+        return self.variable['roll'] * 0.01
+
+    # methods to access velocity in particular coordinate systems
+    # could support more, but for now the goal is always to end up
+    # in earth coordinates.
+    # also note that earth coordinates here does *not* mean that 
+    # ship velocity has been removed, just that the coordinates are
+    # oriented E/N/up/error, relative to ship motion.
+    def to_earth(self,vel):
+        """
+        vel: shape [...,components]
+        where components reflects the native coordinate system
+        """
+        xform=self.coord_transform
+
+        if xform == 'beam':
+            vel=np.einsum('ij,...j->...i',
+                          self.mat_beam_to_instrument(),
+                          vel)
+        if xform in ['beam','ship','instrument']:
+            vel=np.einsum('ij,...j->...i',
+                          self.mat_instrument_to_earth(),
+                          vel)
+        return vel
+                         
+
 
 
 class RiverrayFrame(WorkhorseFrame):
@@ -1122,6 +1163,20 @@ class RiverrayFrame(WorkhorseFrame):
         dx=f['cell_length']
         return 0.01*( f['bin1_distance_cm'] + (np.arange(f['Ncells']+1)-0.5)*dx )
 
+    def mat_beam_to_instrument(self):
+        # following ADCP Coordinate Transformation, sec5.3
+        theta=self.fixed['beam_angle']*np.pi/180 
+        aa=1./(2*np.sin(theta))
+        bb=1./(4*np.cos(theta))
+        cc=1 # convex
+        dd=aa/np.sqrt(2)
+
+        beam_to_inst=np.array( [[cc*aa, -cc*aa,  0,      0    ],
+                                [0,      0,     -cc*aa,  cc*aa],
+                                [bb,     bb,     bb,     bb   ],
+                                [dd,     dd,    -dd,    -dd   ]] ) 
+        return beam_to_inst
+
             
     @classmethod
     def frame_dtype(cls,data):
@@ -1319,6 +1374,17 @@ class RiverrayFrame(WorkhorseFrame):
                 md['gps_data']=np.concatenate( per_ensemble )
                 fdata['gps_index']=gps_index
 
+        # maybe convert velocities to earth coordinates
+        target_coord_sys=frames[0].target_coord_sys
+        if target_coord_sys=='earth':
+            for fi,f in enumerate(frames):
+                for vel_field in ['velocity','bt_vel','surf_vel']:
+                    fdata[vel_field][fi,...] = f.to_earth(fdata[vel_field][fi,...])
+            md['coord_sys']='earth'
+        else:
+            # not many other options yet
+            assert( target_coord_sys == 'native' or target_coord_sys==md['coord_sys'] )
+
         # Transfer from dictionary to a numpy struct array
 
         # nan out float point fields 
@@ -1387,15 +1453,15 @@ class Pd0Reader(object):
     def __init__(self):
         pass
 
-    def parse(self,fn,cls=None):
-        frames=self.parse_all_frames(fn,cls=cls)
+    def parse(self,fn,cls=None,**frame_kwargs):
+        frames=self.parse_all_frames(fn,cls=cls,**frame_kwargs)
         if frames:
             return frames[0].concatenate_frames(frames)
         else:
             print("%s had no frames!"%fn)
             return None,None
 
-    def parse_all_frames(self,fn,cls=None):
+    def parse_all_frames(self,fn,cls=None,**frame_kwargs):
         """
         fn: filename
         returns: a list of parsed frames
@@ -1411,7 +1477,7 @@ class Pd0Reader(object):
 
         while fp.tell() < eof:
             try:
-                frames.append( self.parse_one_frame(fp,filename=fn,cls=cls) )
+                frames.append( self.parse_one_frame(fp,filename=fn,cls=cls,**frame_kwargs) )
             except Pd0Eof:
                 break
         return frames
@@ -1471,7 +1537,7 @@ class Pd0Reader(object):
 
         return header,raw_frame,offsets
 
-    def parse_one_frame(self,fp,filename='n/a',cls=None):
+    def parse_one_frame(self,fp,filename='n/a',cls=None,**frame_kwargs):
         """ fp: open file-like object
         scans from the start of a frame (0x7f, {0x7f,0x79}).
 
@@ -1499,7 +1565,8 @@ class Pd0Reader(object):
               offsets=offsets,
               # initial_pos=initial_file_pos,
               # file_pos=file_pos,
-              filename=filename)
+              filename=filename,
+              **frame_kwargs)
         F.parse()
         
         return F

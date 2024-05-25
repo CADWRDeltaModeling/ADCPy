@@ -22,7 +22,8 @@ import datetime
 
 from . import adcpy
 from . import adcpy_utilities as util
-
+#import adcpy
+#import adcpy_utilities as util
 
 def average_transects(transects,dxy,dz,plotline=None,return_adcpy=True,
                       stats=True,plotline_from_flow=False,sd_drop=0,

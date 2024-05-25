@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
 """ Data structures and manipulation of ADCP data
 
-ADCPy allows the user to read raw (unprocessed) data from ADCP 
-instruments, perform a suite of processing functions and data transformations, 
-and output summary data and related plots. By providing access to the raw ADCP 
-velocities, ADCPy allows exacting user control over the diagnosis of water 
-movement. Numerous built-in data transformation tools and associated utilities 
-allow full scripting of ADCP processing, from raw data to final output plots 
-and flow volumes. Raw ADCP data is stored as a python object class, which may 
-be exported and imported to disk in the Network Common Data Format (Climate 
+ADCPy allows the user to read raw (unprocessed) data from ADCP
+instruments, perform a suite of processing functions and data transformations,
+and output summary data and related plots. By providing access to the raw ADCP
+velocities, ADCPy allows exacting user control over the diagnosis of water
+movement. Numerous built-in data transformation tools and associated utilities
+allow full scripting of ADCP processing, from raw data to final output plots
+and flow volumes. Raw ADCP data is stored as a python object class, which may
+be exported and imported to disk in the Network Common Data Format (Climate
 and Forecast Metadata Convention; NetCDF-CF).
 
-This code is open source, and defined by the included MIT Copyright License 
+This code is open source, and defined by the included MIT Copyright License
 
 Designed for Python 2.7; NumPy 1.7; SciPy 0.11.0; Matplotlib 1.2.0
 2014-09 - First Release; blsaenz, esatel
+2024-05 - blsaenz, python3
 """
 from __future__ import print_function
 import six
@@ -24,6 +25,8 @@ import numpy as np
 import scipy.stats.stats as sp
 from . import adcpy_utilities as util
 from . import adcpy_plot as plot
+#import adcpy_utilities as util
+#import adcpy_plot as plot
 import netCDF4
 import importlib
 
@@ -41,22 +44,22 @@ adcpdata_subclass_names = [ 'ADCPRdiWorkhorseData',  # RDI Workhorse / WinRiver 
 
 def open_adcp(file_path,file_type=None,**kwargs):
     """ Open an ADCP file and return an ADCPData instance.
-    Attempts to determine the type of a passed ADCP data file, and 
-    will pass the file type to the appropriate subclass for reading, 
+    Attempts to determine the type of a passed ADCP data file, and
+    will pass the file type to the appropriate subclass for reading,
     and will return a populated AdcpData structure if possible.  Optionally
     the file type (and subclass reading) can be forced by assigning one
     of the known subclass names as a string.
-    
+
     Parameters
     ----------
-    
-        file_path : str 
+
+        file_path : str
         path and filename of ADCPy-supported file to open [str]
-        
+
         file_type : str either 'raw_file' or 'nc_file' [str], optional to help in deciding how to open file
-        
+
         **kwargs additional keyword=argument pairs that will be passed to the appropriate open call
-    
+
     Returns
     -------
         ADCPData class object (or sub-class)
@@ -98,19 +101,19 @@ def open_adcp(file_path,file_type=None,**kwargs):
         else:
             adata = ADCPRdiWorkhorseData.ADCPRdiWorkhorseData(file_path, **kwargs)
         #exec(init_command)
-        return adata      
+        return adata
     except:
         print("Init of ADCPData file_type '" + file_type +"' failed")
-        raise             
+        raise
 
 class ADCPData(object):
-    """ 
+    """
     Encapsulates data from a single deployment of an ADCP
     Note that this class is intended to be general across multiple
-    types of ADCPs and deployments - to the extent possible place 
+    types of ADCPs and deployments - to the extent possible place
     code specific to brand or type of deployment in subclasses.
     """
-    # Attributes common to all adcps (though may be None if no such 
+    # Attributes common to all adcps (though may be None if no such
     # data is present
     base_data_names =  ('n_ensembles',  # time/horizontal dimension
                         'n_bins',       # along-beam (typ. vertical) dimension
@@ -135,12 +138,12 @@ class ADCPData(object):
     # Flags affecting behavior
     default_lonlat_srs = 'WGS84'
     # Which field is defined as the first dimension of the variables
-    # in netcdf output.  'time' will generally cause software to 
+    # in netcdf output.  'time' will generally cause software to
     # consider the data a timeseries
     nc_ensemble_dim = 'ensemble' # 'time'
 
     xy_line=None
-    
+
     def __init__(self,raw_file=None,nc_file=None,**kwargs):
         self.clean_base_data()
         self.messages = [] # list of messages related to reading/processing
@@ -148,12 +151,12 @@ class ADCPData(object):
         if nc_file is not None:
             self.read_nc(nc_file=nc_file)
         elif raw_file is not None:
-            self.read_raw(raw_file=raw_file,**kwargs)    
+            self.read_raw(raw_file=raw_file,**kwargs)
 
 
     def clean_base_data(self):
-        """ 
-        Sets all base data variables to none.  Used in __init__, and 
+        """
+        Sets all base data variables to none.  Used in __init__, and
         probably shouldn't be called anywhere else.
         """
         for var in self.base_data_names:
@@ -161,7 +164,7 @@ class ADCPData(object):
 
 
     def copy_base_data(self):
-        """ 
+        """
         Copies base ADCP data to a new ADCPData calss - used to populate
         a new ADCPData class for the purposes of saving processed data
         or stripping out subclass information.
@@ -176,10 +179,10 @@ class ADCPData(object):
 
 
     def copy_minimum_data(self):
-        """ 
+        """
         Copies the minimum amount of data required to constitute ADCPy data.
         Returns:
-            adata = new ADCPData class object        
+            adata = new ADCPData class object
         """
         min_data_names = ('n_ensembles',
                           'n_bins',
@@ -192,17 +195,17 @@ class ADCPData(object):
 
 
     def msg(self,s):
-        """ 
-        Collect information/debugging/warnings during reading and processing 
-        of this data. 
+        """
+        Collect information/debugging/warnings during reading and processing
+        of this data.
         Inputs:
             s = python str to display
         """
         self.messages.append(s)
         print(s)
-        
+
     def print_history(self):
-        """ 
+        """
         Returns a string describing the filename and/or method
         used to get the data - analagous to CF conventions history.
         """
@@ -222,31 +225,31 @@ class ADCPData(object):
         self.history = self.history + dtn.strftime('%Y-%m-%d %H:%M:%S ') + string + '; '
 
     def date_time_str(self,filter_missing=False):
-        """ 
+        """
         Returns a list of date and time strings or ensembles.  .
         Inputs:
             filter_missing = Strips np.nan and None if True [boolean]
-        """    
+        """
         from matplotlib.dates import num2date
-        dts = [num2date(self.mtime[i]).strftime('%c') for i in range(np.size(self.mtime))] 
+        dts = [num2date(self.mtime[i]).strftime('%c') for i in range(np.size(self.mtime))]
         if filter_missing:
             mtime = self.mtime[~np.isnan(self.mtime)]
         else:
             mtime = self.mtime
-        dts = [num2date(mtime[i]).strftime('%c') for i in range(np.size(mtime))] 
+        dts = [num2date(mtime[i]).strftime('%c') for i in range(np.size(mtime))]
         if filter_missing:
             dts = filter(None,dts)
         return dts
 
     def get_subclass_name(self):
-        """ 
+        """
         Helper function thet returns the ultimate (sub)class name of self
         """
         return self.__class__.__name__
-        
+
     def write_nc(self,filename,zlib=None):
-        """ 
-        Write the ADCP data to a CF-compliant netcdf file        
+        """
+        Write the ADCP data to a CF-compliant netcdf file
         Subclasses should generally leave this be, and implement
         extra attribute/variable writing via self.write_nc_extra(rootgrp)
         Inputs:
@@ -259,13 +262,13 @@ class ADCPData(object):
             # This allows reading of the correct subclass netcdf variables
             # using only the file itself
             rootgrp.ADCPData_class_name = self.get_subclass_name()
-            
-            # dimensions:                
+
+            # dimensions:
             time_dim = rootgrp.createDimension(self.nc_ensemble_dim,self.n_ensembles)
             bin_dim = rootgrp.createDimension('bin',self.n_bins)
             component3_dim = rootgrp.createDimension('component3',3)
             component2_dim = rootgrp.createDimension('component2',2)
-            
+
             # Coordinate variables - depending on self.nc_ensemble_dim, time
             # may be a coordinate variable, or not...
             time_var = rootgrp.createVariable('time','f8',
@@ -277,16 +280,16 @@ class ADCPData(object):
             time_var.calendar='proleptic_gregorian'
             if self.mtime is not None:
                 time_var[...] = self.mtime
-            
+
             ens_var = rootgrp.createVariable('ensemble','i8',self.nc_ensemble_dim,
                                              zlib=zlib)
             ens_var.units = 'count'
             ens_var[...] = np.arange(self.n_ensembles)
-            
+
             bin_var = rootgrp.createVariable('bin','f8','bin',zlib=zlib)
             bin_var.units = 'm'
             bin_var[:] = self.bin_center_elevation
-            
+
             comp_var3 = rootgrp.createVariable('component3','S1','component3')
             comp_var3.units = 'none'
             comp_var3[:] = ['u','v','w']
@@ -294,13 +297,13 @@ class ADCPData(object):
             comp_var2 = rootgrp.createVariable('component2','S1','component2')
             comp_var2.units = 'none'
             comp_var2[:] = ['u','v']
-            
+
             velocity_var = rootgrp.createVariable('velocity','f8',
                                                   (self.nc_ensemble_dim,'bin',
                                                    'component3'),zlib=zlib)
             velocity_var.units = 'm/s'
             velocity_var[...] = self.velocity
-            
+
             if self.lonlat is not None:
                 lat_var = rootgrp.createVariable('lat','f8',
                                                  self.nc_ensemble_dim,
@@ -308,13 +311,13 @@ class ADCPData(object):
                 lat_var.units = 'degrees_north'
                 lat_var.standard_name = 'latitude'
                 lat_var[...] = self.lonlat[...,1]
-                
+
                 lon_var = rootgrp.createVariable('lon','f8',self.nc_ensemble_dim,
                                                  zlib=zlib)
                 lon_var.units = 'degrees_east'
                 lon_var.standard_name = 'longitude'
                 lon_var[...] = self.lonlat[...,0]
- 
+
             if self.xy is not None:
                 pro_var = rootgrp.createVariable('xy_projection','i4')
                 pro_var.scale_factor_at_central_meridian = 0
@@ -328,18 +331,18 @@ class ADCPData(object):
                 ens_x_var.standard_name = 'projection_x_coordinate'
                 ens_x_var.long_name = 'Projected adcp ensemble x coordinate - hopefully in m'
                 ens_x_var[...] = self.xy[...,0]
-                
+
                 ens_y_var = rootgrp.createVariable('ens_y','f8',self.nc_ensemble_dim,
                                                    zlib=zlib)
                 ens_y_var.units = 'm'
-                ens_y_var.standard_name = 'projection_y_coordinate'                
+                ens_y_var.standard_name = 'projection_y_coordinate'
                 ens_y_var.long_name = 'Projected adcp ensemble y coordinate - hopefully in m'
                 ens_y_var[...] = self.xy[...,1]
 
             if self.rotation_angle is not None:
                 rootgrp.rotation_angle = self.rotation_angle
                 rootgrp.rotation_axes = self.rotation_axes
-            
+
             # Some global attributes, recommended by CF
             rootgrp.Conventions="CF-1.0"
             if self.title is not None:
@@ -353,16 +356,16 @@ class ADCPData(object):
             nc_history = "Wrote to NetCDF file %s"%(filename)
             self.history_append(nc_history)
             rootgrp.history = self.history
-            
-            
+
+
             self.write_nc_extra(rootgrp,zlib)
         finally:
             # Failing to close the file can cause it to fail on
             # subsequent calls
             rootgrp.close()
-        
+
     def write_nc_extra(self,rootgrp,zlib):
-        """ 
+        """
         Entry point for subclasses to add attributes and variables to the base
         ADCPData data.
         Inputs:
@@ -372,16 +375,16 @@ class ADCPData(object):
         pass
 
     def read_nc(self,nc_file):
-        """ 
-        Read base/minimum ADCPData variables from a NetCDF format data file.        
+        """
+        Read base/minimum ADCPData variables from a NetCDF format data file.
         Inputs:
             nc_file = string with input netcdf filename and path
         """
         if not os.path.exists(nc_file):
             raise IOError("Cannot find %s"%nc_file)
-        
+
         self.nc_file = nc_file
-        
+
         rootgrp = netCDF4.Dataset(nc_file, 'r', format='NETCDF4')
     #try:
 
@@ -392,20 +395,20 @@ class ADCPData(object):
             print('Variables besides those in the base class may be ignored.')
             print('NetCDF ADCPData Class: ',rootgrp.ADCPData_class_name)
             print('Calling ADCPData Class: ',self.get_subclass_name())
- 
+
         # read base variables
         # import pdb; pdb.set_trace()
         self.mtime = rootgrp.variables['time'][...]
         if self.mtime[0] == 0.0:
             self.mtime = None
         self.velocity = rootgrp.variables['velocity'][...]
-        self.bin_center_elevation = rootgrp.variables['bin'][...]       
+        self.bin_center_elevation = rootgrp.variables['bin'][...]
         self.n_ensembles, self.n_bins, n_vels = np.shape(self.velocity)
-        
+
         # read attributes/scalars/strings
         attributes = ['rotation_angle', 'rotation_axes',
                       'title','institution','source',
-                      'references','comment','history']                                                              
+                      'references','comment','history']
         for att in attributes:
             self.read_nc_att(rootgrp,att)
 
@@ -445,7 +448,7 @@ class ADCPData(object):
             exec(command)
 
     def read_nc_att(self,rg,att):
-        """ 
+        """
         Helper method for reading netcdf attributes from a netcdf file.
         Inputs:
             rg = Python NetCDF object
@@ -456,25 +459,25 @@ class ADCPData(object):
             exec(command)
 
     def read_nc_extra(self,rootgrp):
-        """ 
+        """
         Entry point for subclasses to read extra attributes and variables.
         Inputs:
             rootgrp = Python NetCDF object
         """
-        pass  
+        pass
 
     def read_raw(self,raw_file,**kwargs):
-        """ 
+        """
         Entry point for subclasses to read some sort of native format.
         Inputs:
             raw_file = path to raw file [str]
             ** additional keyword=argument pairs to be used by binary file
-               specific read_raw definitions.           
+               specific read_raw definitions.
         """
-        pass  
+        pass
 
     def lonlat_to_xy(self,xy_srs):
-        """ 
+        """
         Project geographic coordinates (self.lonlat) to self.xy.  Specify
         a string ID for the intended projection (e.g. EPSG:26910).
         Inputs:
@@ -493,9 +496,9 @@ class ADCPData(object):
 
 
     def xy_to_lonlat(self,lonlat_srs=None):
-        """ 
-        Transform projected coordinates (self.xy) to gerographic coordinates 
-        (self.lonlat).  Specify a string ID for the intended projection 
+        """
+        Transform projected coordinates (self.xy) to gerographic coordinates
+        (self.lonlat).  Specify a string ID for the intended projection
         (e.g. EPSG:26910) or self.default_lonlat_srs is used.
         Inputs:
             lonlat_srs = EPSG code [str]
@@ -503,7 +506,7 @@ class ADCPData(object):
         if self.xy is None:
             raise Exception("xy_to_lonlat: Attempt to transform coordinates with no xy data")
         if lonlat_srs is None:
-            lonlat_srs = self.default_lonlat_srs            
+            lonlat_srs = self.default_lonlat_srs
         self.lonlat = util.coordinate_transform(self.xy,self.xy_srs,lonlat_srs,interp_nans=True)
         self.lonlat_srs = lonlat_srs
         self.history_append("xy_to_lonlat(lonlat_srs=%s)"%lonlat_srs)
@@ -532,7 +535,7 @@ class ADCPData(object):
         """
         Create an exact copy of an ADCPData class (or sub-class).
         Returns:
-            new ADCPData class object  
+            new ADCPData class object
         """
         import copy as cp
         return cp.deepcopy(self)
@@ -547,14 +550,14 @@ class ADCPData(object):
         """
         #create copy of adcp class
         a = self.self_copy()
-     
+
         # find indices
-        n2 = np.int(np.floor(a.n_ensembles/ens_to_avg))
+        n2 = np.int32(np.floor(a.n_ensembles/ens_to_avg))
         nn = range(n2*ens_to_avg)
-    
+
         # take median on ensemble times
         a.mtime = np.median(a.mtime[nn].reshape(n2,ens_to_avg),1)
-    
+
         # create averaged variables
         if a.lonlat is not None:
             a.lonlat = util.average_array(self.lonlat[nn,:],(n2,ens_to_avg),axis=0)
@@ -563,19 +566,19 @@ class ADCPData(object):
 
         a.velocity = np.zeros((n2, a.n_bins, 3),np.float64)
         for i in range(3):
-            a.velocity[:,:,i] = util.average_array(self.velocity[nn,:,i],(n2,ens_to_avg),axis=0)  
+            a.velocity[:,:,i] = util.average_array(self.velocity[nn,:,i],(n2,ens_to_avg),axis=0)
         if self.xy is not None:
             a.xy = util.average_array(self.xy[nn,:],(n2,ens_to_avg),axis=0)
         a.n_ensembles = n2
-        a.history_append('average_ensembles(ens_to_avg=%i)'%ens_to_avg)        
+        a.history_append('average_ensembles(ens_to_avg=%i)'%ens_to_avg)
         return a
 
     def remove_sidelobes(self,fsidelobe=0.10):
         """
-        Throws out near-bottom cells b/c of side lobe problems 
+        Throws out near-bottom cells b/c of side lobe problems
         fSidelobe=0.10; used 0.15 in past, but Carr and Rehmann use 0.06...
         Inputs:
-            fsidelobe = fraction of total elevation to drop 
+            fsidelobe = fraction of total elevation to drop
         """
         side_lobes = util.find_sidelobes(fsidelobe,
                                        self.bt_depth,
@@ -596,11 +599,35 @@ class ADCPData(object):
             self.velocity[:,:,i] = util.kernel_smooth(kernel_size,self.velocity[:,:,i])
         self.history_append('kernel_smooth(kernel_size=%i)'%kernel_size)
 
-        
-    def sd_drop(self,sd=3.0,sd_axis='elevation',interp_holes=True,
-                warning_fraction=0.05):
+    def elev_bin_drop(self,fraction_bad=0.2):
         """
-        Throw out outliers and fill in gaps based upon standard deviation - 
+        Drop elevation bins, moving up from bottom, if the fraction of ensembles at that
+        elevation that are bad exceed fraction_bad
+
+        :param fraction_bad:
+        :return:
+        """
+        last_bin = self.n_bins
+        for j in range(self.n_bins-1,0,-1):
+            drop = False
+            for k in range(2):
+                n_bad_cells = np.sum(np.isnan(self.velocity[:,j,k]))
+                if float(n_bad_cells)/self.n_ensembles > fraction_bad:
+                    drop = True
+            if drop:
+                last_bin = j+1
+            else:
+                break
+
+        self.velocity = self.velocity[:,0:last_bin,:]
+        self.bin_center_elevation = self.bin_center_elevation[:last_bin]
+        # error vel should be done, if present
+        self.n_bins = last_bin
+
+    def sd_drop(self,sd=3.0,sd_axis='elevation',interp_holes=True,
+                warning_fraction=0.05,use_uv_mag=True):
+        """
+        Throw out outliers and fill in gaps based upon standard deviation -
         typical to use 3 standard deviations (sd=3).
         Inputs:
             sd = stadard defiation, scalar float
@@ -608,36 +635,45 @@ class ADCPData(object):
             interp_holes = if True, interpolate to fill hole created by dropping values > sd
             warning_fraction = if fraction of cells dropped is greater than this,
               throw a warning
+            use_uv_mag = switch is use magnitude og uv velocity for sd filter, instread of just raw
+            u or v velocities
         """
-        v_mag = np.sqrt(self.velocity[:,:,0]**2+self.velocity[:,:,1]**2)
-        v_vert = self.velocity[:,:,2]
-        if sd_axis=='elevation':
-            elev = -1.0*self.bin_center_elevation
+        if sd_axis == 'elevation':
             axis = 1
-        elif sd_axis=='ensemble':
-            if self.xy is not None or self.lonlat is not None:
-                if self.xy is not None:
-                    xd,yd,elev,xy_line = util.find_projection_distances(self.xy)
-                else:
-                    print("sd_drop: found unprojected location data, returning w/ no velocity modification" )
-            else:
-                elev = np.ones(self.n_ensembles)
+            elev = self.bin_center_elevation
+        elif sd_axis == 'ensemble':
             axis = 0
+            if self.xy is None and self.lonlat is None:
+                elev = np.ones(self.n_ensembles)
+            elif self.xy is None:
+                elev = util.cumulative_distance(self.lonlat)
+            else:
+                elev = util.cumulative_distance(self.xy)
         else:
-            print("Unkown axis '%s' passed to sd_drop; vaid options are 'elevation' and 'ensemble'"%sd_axis)
+            print("Unknown axis '%s' passed to sd_drop; valid options are 'elevation' and 'ensemble'"%sd_axis)
             raise ValueError()
-        # drop U/V velocity values, using total uv magnitude
-        drop = util.find_sd_greater(v_mag,elev,sd,axis=axis)
+
+        if use_uv_mag:
+            v_mag = np.sqrt(self.velocity[:,:,0]**2+self.velocity[:,:,1]**2)
+            # drop U/V velocity values, using total uv magnitude
+            drop_uv = util.find_sd_greater(v_mag,sd,axis=axis)
+        else:
+            du = util.find_sd_greater(self.velocity[:,:,0],sd,axis=axis)
+            dv = util.find_sd_greater(self.velocity[:,:,1],sd,axis=axis)
+            drop_uv = np.logical_or(du,dv)
+
         for i in range(3):
             if i == 2:
                 # find separate drop values for vertical (W) velocities
-                drop = util.find_sd_greater(v_vert,elev,sd,axis=axis)
+                drop = util.find_sd_greater(self.velocity[:,:,i],sd,axis=axis)
+            else:
+                drop = drop_uv
             self.velocity[:,:,i] = util.remove_values(self.velocity[:,:,i],
                                                     drop,
                                                     axis=axis,
                                                     elev=elev,
                                                     interp_holes=True,
-                                                    warning_fraction=warning_fraction)   
+                                                    warning_fraction=warning_fraction)
         self.history_append('sd_drop(sd=%f,sd_axis=%s,interp_holes=%s,warning_fraction=%f)'%(sd,
                                                                                              sd_axis,
                                                                                              interp_holes,
@@ -656,7 +692,7 @@ class ADCPData(object):
         return util.rotate_velocity(radian,
                                   self.velocity[:,:,0],
                                   self.velocity[:,:,1])
-                                  
+
 
 
     def set_rotation(self,radian,axes_string='uv'):
@@ -664,12 +700,12 @@ class ADCPData(object):
         Re-orient designated velocities to an arbitrary rotation.
         Inputs:
             radian = rotation in radians
-            axes_string = 2-character string containing 'u','v', or 'w', 
+            axes_string = 2-character string containing 'u','v', or 'w',
               indicating which velocity axes to rotate, with the first
               being in the 0-degree direction and the second the 90-degree
               direction
         """
-        
+
         ax = util.get_axis_num_from_str(axes_string)
         if len(ax) != 2:
             raise ValueError("ADCPy.rotate_velocities: axes_string '%s' not understood")
@@ -677,7 +713,7 @@ class ADCPData(object):
         # un-rotate previous rotation before setting new rotation
         if self.rotation_angle is not None:
             ax_old = util.get_axis_num_from_str(self.rotation_axes)
-            (self.velocity[:,:,ax_old[0]], 
+            (self.velocity[:,:,ax_old[0]],
              self.velocity[:,:,ax_old[1]]) = self.rotate_velocities(-1.0*self.rotation_angle,
                                                                 ax_old[0],
                                                                 ax_old[1])
@@ -685,8 +721,8 @@ class ADCPData(object):
             self.rotation_angle = None
             self.rotation_axes = None
             self.history_append('set_rotation(None)')
-        else:                          
-            (self.velocity[:,:,ax[0]], 
+        else:
+            (self.velocity[:,:,ax[0]],
              self.velocity[:,:,ax[1]]) = self.rotate_velocities(radian,
                                                                 ax[0],
                                                                 ax[1])
@@ -696,20 +732,20 @@ class ADCPData(object):
             else:
                 radian_str = '%f'%radian
             self.rotation_axes = axes_string
-            self.history_append('set_rotation(radian=%s,axes=%s)'%(radian_str,axes_string))        
-        
+            self.history_append('set_rotation(radian=%s,axes=%s)'%(radian_str,axes_string))
+
 
     def get_unrotated_velocity(self):
         """
         If a rotation has been applied to two velocties, this methods un-rotates
         velocties back to raw rotations and returns a 3D velocity array.
         Returns:
-            velocity = 3D numpy array of U,V,W velocities with zero rotation        
+            velocity = 3D numpy array of U,V,W velocities with zero rotation
         """
         velocity = np.copy(self.velocity)
         if self.rotation_angle is not None:
             ax = util.get_axis_num_from_str(self.rotation_axes)
-            (velocity[:,:,ax[0]], 
+            (velocity[:,:,ax[0]],
              velocity[:,:,ax[1]]) = util.rotate_velocity(-1.0*self.rotation_angle,
                                                          velocity[:,:,ax[0]],
                                                          velocity[:,:,ax[1]])
@@ -747,11 +783,11 @@ class ADCPData(object):
 
 
     def calc_ensemble_flow(self,elev_line=None,range_from_velocities=False):
-        """ 
+        """
         Uses valid data and bin_center_elevation distances to construct
         flows in the ensemble axis.
         Inputs:
-            elev_line = optional scalar or array elevation (distance from 
+            elev_line = optional scalar or array elevation (distance from
               transducer) neyond which velocity is invalid
             range_from_velocities = if True, calculates the elev_line
               from the range of valid (non-NaN) velocities in bins.
@@ -765,16 +801,16 @@ class ADCPData(object):
         return flows
 
     def ensemble_mean_velocity(self,elev_line=None,range_from_velocities=False):
-        """ 
+        """
         Uses valid data and bin_center_elevation distances to construct
         mean flows in the ensemble axis.
         Inputs:
-            elev_line = optional scalar or array elevation (distance from 
+            elev_line = optional scalar or array elevation (distance from
               transducer) neyond which velocity is invalid
             range_from_velocities = if True, calculates the elev_line
               from the range of valid (non-NaN) velocities in bins.
         Returns:
-            2D numpy array, shape [self.n_ensembles,3], with mean U,V,W 
+            2D numpy array, shape [self.n_ensembles,3], with mean U,V,W
               velocities
         """
         (my_elev_line,mask) = self.get_velocity_mask(elev_line,range_from_velocities,nan_mask=True)
@@ -786,25 +822,25 @@ class ADCPData(object):
 
     def get_velocity_mask(self,elev_line=None,range_from_velocities=False,
                           mask_region='above',nan_mask=False):
-        """ 
+        """
         Generates a either a boolean mask, or a 1/NaN mask, correspnding to
         valid velocties measurements. If elev_line is given values beyond
         this elevation are masked as invalid.
         Inputs:
-            elev_line = optional scalar or array elevation (distance from 
+            elev_line = optional scalar or array elevation (distance from
               transducer) beyond which velocity is invalid
             range_from_velocities = if True, calculates the elev_line
               from the range of valid (non-NaN) velocities in bins.
-            mask_region = 'above' 
+            mask_region = 'above'
         Returns:
-            2D numpy array, shape [self.n_ensembles,3], with mean U,V,W 
+            2D numpy array, shape [self.n_ensembles,3], with mean U,V,W
               velocities
         """
-       
+
         if range_from_velocities:
             # find lowest non-nan data
             my_elev_line = util.find_max_elev_from_velocity(self.velocity[:,:,0],
-                                                self.bin_center_elevation)        
+                                                self.bin_center_elevation)
         if elev_line is not None:
             my_elev_line = np.copy(elev_line)
             # mask out velocities below depth
@@ -818,12 +854,12 @@ class ADCPData(object):
             mask = np.ones(np.shape(self.velocity[:,:,0]))
         if nan_mask:
             mask = mask*1.0  # convert to float
-            mask[mask==0] = np.nan  # set to nan for data elimination - important b/c zeros are valid data            
+            mask[mask==0] = np.nan  # set to nan for data elimination - important b/c zeros are valid data
         return (my_elev_line,mask)
 
     def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,
-                  kind='bin average',sd_drop=0,mtime_regrid=False):
-        """ 
+                  kind='bin average',sd_drop=0,mtime_regrid=False,nonlinear=False):
+        """
         Projects ensemble locations to a strain line in the xy-plane, and
         then regrids velocities onto a regular grid defined by dxy and dz.
         This process changes the the dimensions of almost every piece of data in
@@ -833,11 +869,11 @@ class ADCPData(object):
         Inputs:
             dxy = new grid xy resolution in xy projection units
             dz = new grid z resolution in z units
-            xy_srs = EPSG code [str]        
+            xy_srs = EPSG code [str]
             pline = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
             sort = if True, pre-sort the data being regrided in terms of location
                on the projection line
-            kind = one of ['bin_average', linear','cubic','nearest'], where 
+            kind = one of ['bin_average', linear','cubic','nearest'], where
                the later three are types of numpy interpolation
             sd_drop = number of standard deviations above which data in a bin is dropped from
               averaging; 0 = no dropping; only used if kind = "bin average"
@@ -847,17 +883,18 @@ class ADCPData(object):
             z = z positions, 1D array of shape [nb]
             z_new = z positions of new grid, 1D array of shape [nb2]
             nn = sort order of xy locations on the projection line
-            pre_calcs = python list of different intermediate things - see 
+            pre_calcs = python list of different intermediate things - see
               ADCPy_utilities.py
-        """        
+        """
         # switch to new projection if required
         if (xy_srs is not None and self.xy_srs != xy_srs) or self.xy is None:
             self.lonlat_to_xy(xy_srs)
-        # find new retangular grid sides and xy locations      
+        # find new retangular grid sides and xy locations
         (xy_range,xy_new_range,xy_new,z_new) = util.new_xy_grid(self.xy,
                                                               self.bin_center_elevation,
                                                               dxy,dz,
-                                                              pline=pline)
+                                                              pline=pline,
+                                                              nonlinear=nonlinear)
         # pre calculate meshes for (faster) 2D interpolation, and in the interest
         # of speed when not reordering arrays...
         if sort:
@@ -867,7 +904,7 @@ class ADCPData(object):
             v_interp = self.velocity[nn,:,:]
         else:
             nn = None
-            v_interp = self.velocity         
+            v_interp = self.velocity
         zmesh_new, xymesh_new = np.meshgrid(z_new,xy_new_range)
         zmesh, xymesh = np.meshgrid(self.bin_center_elevation,xy_range)
         # package pre_calc variables
@@ -876,7 +913,7 @@ class ADCPData(object):
         self.velocity = util.xy_regrid_multiple(v_interp,self.xy,xy_new,
                                              self.bin_center_elevation,
                                              z_new,pre_calcs,kind,sd_drop)
-        # mtime is special - we can't regrid if sorted 
+        # mtime is special - we can't regrid if sorted
         # removed loop times to get min transect cross time
         if self.mtime is not None:
             if mtime_regrid:
@@ -894,7 +931,7 @@ class ADCPData(object):
         z = np.copy(self.bin_center_elevation)
         self.n_ensembles,self.n_bins = np.shape(self.velocity[:,:,0])
         self.bin_center_elevation = z_new
-        self.xy = xy_new    
+        self.xy = xy_new
         self.xy_to_lonlat()
         self.history_append("xy_regrid(dxy=%f,dz=%f,xy_srs=%s,pline=%s)"%(dxy,dz,
                                                                           xy_srs,
@@ -904,13 +941,13 @@ class ADCPData(object):
 
 
     def t_regrid(self,dt,dz,sd_drop=0):
-        """ 
+        """
         Regrids velocities onto a regular grid defined by dt and dz.
         This process changes the the dimensions of almost every piece of data in
         the class. Regridding is accomplished through bin-averaging values that
-        fall within a grid cell defined by dt and dz.  This is designed for 
-        data reduction - unknown results may occur if up-sampling is attempted.        
-        Returns intermediate calculations to facilitate regridding of additional 
+        fall within a grid cell defined by dt and dz.  This is designed for
+        data reduction - unknown results may occur if up-sampling is attempted.
+        Returns intermediate calculations to facilitate regridding of additional
         data by subclasses.
         Inputs:
             dt = new grid time resolution in matplotlib datenum format
@@ -923,10 +960,10 @@ class ADCPData(object):
             z = z positions, 1D array of shape [nb]
             z_new = z positions of new grid, 1D array of shape [nb2]
             dummy variable for compatibility - None returned
-            pre_calcs = python list of different intermediate things - see 
+            pre_calcs = python list of different intermediate things - see
               ADCPy_utilities.py
-        """        
-        
+        """
+
         if self.mtime is None:
             print("ensemble times (mtime) must be assgined to regrid by time")
             raise ValueError()
@@ -954,12 +991,12 @@ class ADCPData(object):
                 self.lonlat = np.vstack((new_lon,new_lat))
                 if self.xy_srs is not None and self.xy is not None:
                     self.lonlat_to_xy(self.xy_srs)
-                
+
             z = np.copy(self.bin_center_elevation)
             t = np.copy(self.mtime)
             self.n_ensembles,self.n_bins = np.shape(self.velocity[:,:,0])
             self.bin_center_elevation = z_new
-            self.mtime = t_new    
+            self.mtime = t_new
             self.history_append("t_regrid(dt=%f,dz=%f)"%(dt,dz))
             # return vars such that sub-classes with more xy dimension variables can regrid
             return (t, t_new, z, z_new, None, pre_calcs)
@@ -972,7 +1009,7 @@ class ADCPData(object):
             split_nums = Python list of ensemble numbers (indices)
         """
         n_splits = len(split_nums)
-        sub_adcps = list()        
+        sub_adcps = list()
         for i in range(n_splits+1):
             # find bounding ensembles - extremely non-pythonic
             if i==0:
@@ -989,9 +1026,9 @@ class ADCPData(object):
 
         return sub_adcps
 
-    def crop(self,l_bound,u_bound,extra_fields=[]):
+    def crop(self,l_bound,u_bound,extra_fields=[],axis='ensemble'):
         """
-        Restricts esembles to the range given, ertiurning a new cropped copy of the ADCPData
+        Restricts ensembles to the range given, returning a new cropped copy of the ADCPData
         class
         Inputs:
             l_bounds = lower ensemble bound
@@ -999,24 +1036,36 @@ class ADCPData(object):
             extra_fields = extra arrays to reshape
         """
         a = self.self_copy()
-        a.velocity = a.velocity[l_bound:u_bound, ...]
-        if a.mtime is not None:
-            a.mtime = a.mtime[l_bound:u_bound]
-        if a.lonlat is not None:
-            a.lonlat = a.lonlat[l_bound:u_bound, ...]
-        if a.xy is not None:
-            a.xy = a.xy[l_bound:u_bound, ...]
-        if extra_fields:
-            for f in extra_fields:
-                if hasattr(self, f):
-                    data = np.squeeze(getattr(self, f))
-                    if np.shape(data)[0] == 1 and len(np.shape(data)) > 1:
-                        # special case of double-array single-dim variables, not sure why we carry these around
-                        data = np.squeeze(data)
-                        setattr(a, f, np.array(data[l_bound:u_bound, ...]))
-                    else:
-                        setattr(a, f, data[l_bound:u_bound, ...])
-        a.n_ensembles = np.shape(a.velocity)[0]
+        if axis == 'ensemble':
+
+            a.velocity = a.velocity[l_bound:u_bound, ...]
+            if a.mtime is not None:
+                a.mtime = a.mtime[l_bound:u_bound]
+            if a.lonlat is not None:
+                a.lonlat = a.lonlat[l_bound:u_bound, ...]
+            if a.xy is not None:
+                a.xy = a.xy[l_bound:u_bound, ...]
+            if extra_fields:
+                for f in extra_fields:
+                    if hasattr(self, f):
+                        data = np.squeeze(getattr(self, f))
+                        if np.shape(data)[0] == 1 and len(np.shape(data)) > 1:
+                            # special case of double-array single-dim variables, not sure why we carry these around
+                            data = np.squeeze(data)
+                            setattr(a, f, np.array(data[l_bound:u_bound, ...]))
+                        else:
+                            setattr(a, f, data[l_bound:u_bound, ...])
+            a.n_ensembles = np.shape(a.velocity)[0]
+
+        elif axis=='bins':
+
+            a.velocity = a.velocity[:,l_bound:u_bound,:]
+            a.bin_center_elevation = a.bin_center_elevation[l_bound:u_bound]
+            a.n_bins = u_bound - l_bound
+
+        else:
+            raise ValueError('crop(): axis must be either "ensemble" or "bins"')
+
         a.history_append('crop_or_split_ensemble: %i:%i' % (l_bound, u_bound))
         return a
 
@@ -1029,7 +1078,7 @@ class ADCPData(object):
         """
         n_splits = len(split_elev)
         sub_adcps = list()
-        elev_is_negative = np.less(util.nanmean(self.bin_center_elevation),0)            
+        elev_is_negative = np.less(util.nanmean(self.bin_center_elevation),0)
         if elev_is_negative:
             splits = sorted(split_elev,reverse=True)
         else:
@@ -1124,23 +1173,23 @@ class ADCPData(object):
 
 
 class ADCPTransectData(ADCPData):
-    """ 
-    Subclass of :py:class:ADCPData for transect-based ADCP surveys, 
+    """
+    Subclass of :py:class:ADCPData for transect-based ADCP surveys,
     for when the ADCP intrument is moving.
     """
 
-    adcp_depth = None # [n_bins] - depth of transducer under water 
+    adcp_depth = None # [n_bins] - depth of transducer under water
     bt_velocity = None # [n_bins] - depth of transducer under water
     bt_depth = None    # [n_ensembles] - bottom depth/elevation from transducer face
- 
+
     def write_nc_extra(self,grp,zlib=None):
-        """ 
-        Extra transect-specific data is written to a NetCDF output 
+        """
+        Extra transect-specific data is written to a NetCDF output
         file.
         Inputs:
             grp = Python NetCDF object
             zlib = if True, use variable compression
-        """ 
+        """
         super(ADCPTransectData,self).write_nc_extra(grp,zlib)
         if self.adcp_depth is not None:
             adcp_depth_var = grp.createVariable('adcp_depth','f8',
@@ -1174,7 +1223,7 @@ class ADCPTransectData(ADCPData):
                                                   (self.n_ensembles,),
                                                   a.adcp_depth,
                                                   (a.n_ensembles,))
-            
+
         if self.bt_depth is not None:
             self.bt_depth = util.concatenate_array_w_fill(self.bt_depth.flatten(),
                                                   (self.n_ensembles,),
@@ -1187,14 +1236,14 @@ class ADCPTransectData(ADCPData):
                                                       (self.n_ensembles,2),
                                                       a.bt_velocity[:,:2],
                                                       (a.n_ensembles,2))
-        
 
-    def read_nc_extra(self,grp):           
-        """ 
+
+    def read_nc_extra(self,grp):
+        """
         Extra transect-specific data is read from NetCDF output file.
         Inputs:
             grp = Python NetCDF object
-        """ 
+        """
         super(ADCPTransectData,self).read_nc_extra(grp)
         if 'adcp_depth' in grp.variables:
             self.adcp_depth = np.array(grp.variables['adcp_depth'][...])
@@ -1203,21 +1252,21 @@ class ADCPTransectData(ADCPData):
         if 'bt_depth' in grp.variables:
             # need double array here so future transposes work
             self.bt_depth = np.array([grp.variables['bt_depth'][...]])
-            
+
     def copy_head_correct_vars(self,xy_srs=None):
         """
         Returns the raw data required to perform a head_correction of a moving
         ADCP platform (i.e. a boat)
         Inputs:
-            xy_srs = EPSG code [str] if projection to xy is desired, or None            
-        """       
+            xy_srs = EPSG code [str] if projection to xy is desired, or None
+        """
         if self.xy is None:
-            self.lonlat_to_xy(xy_srs=xy_srs)    
+            self.lonlat_to_xy(xy_srs=xy_srs)
         return (np.copy(self.mtime),                          # times
                 np.copy(self.heading),                        # compass headings
                 np.copy(self.bt_velocity),                    # bottom track velocities
                 np.copy(self.xy))                             # xy positions
-    
+
     def heading_correct(self,cf=None,u_min_bt=None,hdg_bin_size=None,
                         hdg_bin_min_samples=None,mag_dec=None):
         """
@@ -1243,10 +1292,10 @@ class ADCPTransectData(ADCPData):
                                     mtime_in=self.mtime,
                                     bt_vel_in=self.bt_velocity,
                                     xy_in=self.xy)
-        (self.velocity[:,:,0], 
+        (self.velocity[:,:,0],
         self.velocity[:,:,1]) = self.rotate_velocities(delta*np.pi/180.0,0,1)
         if self.bt_velocity is not None:
-            (self.bt_velocity[:,0], 
+            (self.bt_velocity[:,0],
             self.bt_velocity[:,1]) = self.rotate_bt_velocities(delta*np.pi/180.0)
         self.heading = self.heading + delta
         if cf is not None:
@@ -1262,26 +1311,26 @@ class ADCPTransectData(ADCPData):
 
     def rotate_bt_velocities(self,radian):
         """
-        Re-orient bottom track velocities to an arbitrary rotation, without 
+        Re-orient bottom track velocities to an arbitrary rotation, without
         self assignment.
         Inputs:
             radian = rotation in radians, either 1D numpy array or scalar
         Returns:
-            
-        """    
+
+        """
         if self.bt_velocity is not None:
             btU,btV = util.rotate_velocity(radian,
                                          -self.bt_velocity[:,0],
                                          -self.bt_velocity[:,1])
             return (-btU,-btV)
         else:
-            return (0.0,0.0)        
+            return (0.0,0.0)
 
     def set_rotation(self,radian,axes_string='uv'):
         """ Re-orient designated velocities to an arbitrary rotation.
         Inputs:
             radian = rotation in radians
-            axes_string = 2-character string containing 'u','v', or 'w', 
+            axes_string = 2-character string containing 'u','v', or 'w',
               indicating which velocity axes to rotate, with the first
               being in the 0-degree direction and the second the 90-degree
               direction
@@ -1300,18 +1349,18 @@ class ADCPTransectData(ADCPData):
 
     def get_velocity_mask(self,elev_line=None,range_from_velocities=False,
                           mask_region='above',nan_mask=False):
-        """ 
+        """
         Generates a either a boolean mask, or a 1/NaN mask, correspnding to
         valid velocties measurements. If elev_line is given values beyond
         this elevation are masked as invalid.
         Inputs:
-            elev_line = optional scalar or array elevation (distance from 
+            elev_line = optional scalar or array elevation (distance from
               transducer) neyond which velocity is invalid
             range_from_velocities = if True, calculates the elev_line
               from the range of valid (non-NaN) velocities in bins.
-            mask_region = 'above' 
+            mask_region = 'above'
         Returns:
-            2D numpy array, shape [self.n_ensembles,3], with mean U,V,W 
+            2D numpy array, shape [self.n_ensembles,3], with mean U,V,W
               velocities
         """
         my_elev_line = np.copy(elev_line)
@@ -1325,7 +1374,7 @@ class ADCPTransectData(ADCPData):
     def calc_crossproduct_flow(self):
         """
         Calculates the discharge(flow) by finding the cross product of the water
-        and bottom track velocities.  
+        and bottom track velocities.
         Returns:
             mean U and V velocity, U and V total flow, and survey area
         """
@@ -1340,8 +1389,8 @@ class ADCPTransectData(ADCPData):
 
 
     def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,kind='bin average',
-                  sd_drop=0,mtime_regrid=False,sd_drop_alt=0):
-        """ 
+                  sd_drop=0,mtime_regrid=False,sd_drop_alt=0,nonlinear=False):
+        """
         Projects ensemble locations to a strain line in the xy-plane, and
         then regrids velocities onto a regular grid defined by dxy and dz.
         This process changes the the dimensions of almost every piece of data in
@@ -1351,11 +1400,11 @@ class ADCPTransectData(ADCPData):
         Inputs:
             dxy = new grid xy resolution in xy projection units
             dz = new grid z resolution in z units
-            xy_srs = EPSG code [str]        
+            xy_srs = EPSG code [str]
             pline = numpy array of line defined by 2 points: [[x1,y1],[x2,y2]], or None
             sort = if True, pre-sort the data being regrided in terms of location
                on the projection line
-             kind = one of ['bin_average', linear','cubic','nearest'], where 
+             kind = one of ['bin_average', linear','cubic','nearest'], where
                the later three are types of numpy interpolation
             sd_drop = number of standard deviations above which data in a bin is dropped from
               averaging; 0 = no dropping; only used if kind = "bin average"
@@ -1366,15 +1415,15 @@ class ADCPTransectData(ADCPData):
             z = z positions, 1D array of shape [nb]
             z_new = z positions of new grid, 1D array of shape [nb2]
             nn = sort order of xy locations on the projection line
-            pre_calcs = python list of different intermediate things - see 
+            pre_calcs = python list of different intermediate things - see
               ADCPy_utilities.py
-        """        
-        # call base method to start regridding of base data, and get 
-        # new grid info    
+        """
+        # call base method to start regridding of base data, and get
+        # new grid info
         (xy, xy_new, z, z_new, nn, pre_calcs) = \
         super(ADCPTransectData,self).xy_regrid(dxy,dz,xy_srs,pline,sort,
-                                               kind,sd_drop)
-    
+                                               kind,sd_drop,nonlinear=nonlinear)
+
         # pre-sort data if needed, for speed
         if sort:
             if np.size(self.adcp_depth) > 1:
@@ -1390,12 +1439,12 @@ class ADCPTransectData(ADCPData):
             bt_depth_interp = np.squeeze(self.bt_depth)
             heading_interp = self.heading
             bt_velocity_interp = self.bt_velocity
-            
+
         # regrid xy-based transect variables
         if np.size(self.adcp_depth) > 1:
             self.adcp_depth = util.xy_regrid(adcp_depth_interp,xy,xy_new,
                                            pre_calcs=pre_calcs,kind=kind)
-        if self.bt_depth is not None:            
+        if self.bt_depth is not None:
             self.bt_depth = util.xy_regrid(bt_depth_interp,xy,xy_new,
                                            pre_calcs=pre_calcs,kind=kind,
                                            sd_drop=sd_drop_alt)
@@ -1415,28 +1464,28 @@ class ADCPTransectData(ADCPData):
             self.bt_velocity = util.xy_regrid_multiple(bt_velocity_interp,xy,xy_new,
                                            pre_calcs=pre_calcs,kind=kind,
                                            sd_drop=sd_drop_alt)
-                           
+
     def split_by_ensemble(self,split_nums,extra_fields=[]):
         a = super(ADCPTransectData,self).split_by_ensemble(split_nums,
             extra_fields=extra_fields+['adcp_depth','bt_depth','bt_velocity'])
 
-    def crop(self,l_bound,u_bound,extra_fields=[]):
+    def crop(self,l_bound,u_bound,extra_fields=[],axis='ensemble'):
         a = super(ADCPTransectData,self).crop(l_bound,u_bound,
-            extra_fields=extra_fields+['adcp_depth','bt_depth','bt_velocity'])
+            extra_fields=extra_fields+['adcp_depth','bt_depth','bt_velocity'],axis=axis)
         if len(np.shape(a.bt_depth)) == 1:
             a.bt_depth = np.array([a.bt_depth])
         return a
 
 class ADCPMooredData(ADCPData):
-    """ 
+    """
     Subclass of :py:class:ADCPData for moored ADCP surveys.
     """
-   
-    adcp_depth = None # [n_bins] - depth of transducer under water 
+
+    adcp_depth = None # [n_bins] - depth of transducer under water
 
     def write_nc_extra(self,grp,zlib=None):
-        super(ADCPMooredData,self).write_nc_extra(grp)       
+        super(ADCPMooredData,self).write_nc_extra(grp)
 
-    def read_nc_extra(self,grp):           
+    def read_nc_extra(self,grp):
         super(ADCPMooredData,self).read_nc_extra(grp)
 

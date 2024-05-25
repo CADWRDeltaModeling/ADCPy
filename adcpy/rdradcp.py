@@ -21,7 +21,7 @@ def msg_print(s):
 
 
 def get_ens_dtype(sourceprog = 'WINRIVER'):
-    
+
     ens_dtype = [('mtime',float64),
                  ('number',int32),
                  ('pitch',float64), ('roll',float64), ('heading',float64),
@@ -53,9 +53,9 @@ def get_ens_dtype(sourceprog = 'WINRIVER'):
                       ('nav_elatitude',float64),
                       ('nav_mtime',float64)]
     else:
-        pass  
+        pass
     return ens_dtype
-    
+
 def get_bin_dtype():
 
     # things of the shape [n_cells,n]
@@ -74,7 +74,7 @@ class Adcp(object):
     pass
 
 #function [adcp,cfg,ens,hdr]=rdradcp(name,varargin);
-# 
+#
 def rdradcp(name,
             num_av=5,
             nens=-1, # or [start,stop] as 1-based, inclusive
@@ -83,19 +83,19 @@ def rdradcp(name,
             log_fp=None):
     """
 
-    RDRADCP  Read (raw binary) RDI ADCP files, 
+    RDRADCP  Read (raw binary) RDI ADCP files,
     ADCP=RDRADCP(NAME) reads the raw binary RDI BB/Workhorse ADCP file NAME and
-    puts all the relevant configuration and measured data into a data structure 
+    puts all the relevant configuration and measured data into a data structure
     ADCP (which is self-explanatory). This program is designed for handling data
     recorded by moored instruments (primarily Workhorse-type but can also read
     Broadband) and then downloaded post-deployment. For vessel-mount data I
     usually make p-files (which integrate nav info and do coordinate transformations)
-    and then use RDPADCP. 
-    
+    and then use RDPADCP.
+
     This current version does have some handling of VMDAS, WINRIVER, and WINRIVER2 output
     files, but it is still 'beta'. There are (inadequately documented) timestamps
     of various kinds from VMDAS, for example, and caveat emptor on WINRIVER2 NMEA data.
-    
+
     [ADCP,CFG]=RDRADCP(...) returns configuration data in a
     separate data structure.
 
@@ -105,7 +105,7 @@ def rdradcp(name,
     [..]=RDRADCP(NAME,NUMAV,[NFIRST NEND]) reads only the specified range
     of ensembles. This is useful if you want to get rid of bad data before/after
     the deployment period.
-    
+
     Notes- sometimes the ends of files are filled with garbage. In this case you may
          have to rerun things explicitly specifying how many records to read (or the
          last record to read). I don't handle bad data very well. Also - in Aug/2007
@@ -134,16 +134,16 @@ def rdradcp(name,
     'baseyear'    : Base century for BB/v8WH firmware (default to 2000).
 
     'despike'    : [ 'no' | 'yes' | 3-element vector ]
-                   Controls ensemble averaging. With 'no' a simple mean is used 
-                   (default). With 'yes' a mean is applied to all values that fall 
-                   within a window around the median (giving some outlier rejection). 
-                   This is useful for noisy data. Window sizes are [.3 .3 .3] m/s 
-                   for [ horiz_vel vert_vel error_vel ] values. If you want to 
+                   Controls ensemble averaging. With 'no' a simple mean is used
+                   (default). With 'yes' a mean is applied to all values that fall
+                   within a window around the median (giving some outlier rejection).
+                   This is useful for noisy data. Window sizes are [.3 .3 .3] m/s
+                   for [ horiz_vel vert_vel error_vel ] values. If you want to
                    change these values, set 'despike' to the 3-element vector.
 
     R. Pawlowicz (rich@eos.ubc.ca) - 17/09/99
 
-    R. Pawlowicz - 17/Oct/99 
+    R. Pawlowicz - 17/Oct/99
           5/july/00 - handled byte offsets (and mysterious 'extra" bytes) slightly better, Y2K
           5/Oct/00 - bug fix - size of ens stayed 2 when NUMAV==1 due to initialization,
                      hopefully this is now fixed.
@@ -177,14 +177,14 @@ def rdradcp(name,
     23/Aug2006  - ouput some bt QC stiff
     29/Oct/2006 - winriver bottom track block had errors in it - now fixed.
     30/Oct/2006 - pitch_std, roll_std now uint8 and not int8 (thanks Felipe pimenta)
-    13/Aug/2007 - added Rio Grande (firmware v 10), 
+    13/Aug/2007 - added Rio Grande (firmware v 10),
                   better handling of those cursed winriver ASCII NMEA blocks whose
                   lengths change unpredictably.
                   skipping the inadequately documented 2022 WINRIVER-2 NMEA block
     13/Mar/2010 - firmware version 50 for WH.
-   
+
     31/Aug/2012 - Rusty Holleman / RMA - ported to python
-    
+
     Python port details:
      log_fp: a file-like object - the message are the same as in the matlab code,
         but this allows them to be redirected elsewhere.
@@ -194,7 +194,7 @@ def rdradcp(name,
     def msg(s):
         log_fp.write(s)
         log_fp.flush()
-        
+
     century=baseyear  # ADCP clock does not have century prior to firmware 16.05.
     vels=despike   # Default to simple averaging
 
@@ -219,10 +219,10 @@ def rdradcp(name,
     if (cfg.prog_ver<16.05 and cfg.prog_ver>5.999) or cfg.prog_ver<5.55:
         msg("***** Assuming that the century begins year %d (info not in this firmware version)\n"%century)
     else:
-        century=0  # century included in clock.  
+        century=0  # century included in clock.
 
     def ensemble_dates(ensx):
-        """ helper routine to extract dates from the given ensemble, return 
+        """ helper routine to extract dates from the given ensemble, return
         as an array of datenums
         """
         # handle hours, minutes, seconds, 100ths manually, but date with date2num
@@ -259,7 +259,7 @@ def rdradcp(name,
     msg("\nEstimating %d ensembles in this file\n"%nensinfile)
 
     # [python] nens, if a sequence, is taken to be 1-based, inclusive indices.
-    # This is counter to the normal python interpretation, but instead 
+    # This is counter to the normal python interpretation, but instead
     # consistent with the original matlab.
     if isinstance(nens,int) or isinstance(nens,integer):
         if nens==-1:
@@ -283,7 +283,7 @@ def rdradcp(name,
 
 
 
-    # Structure to hold all ADCP data 
+    # Structure to hold all ADCP data
     # Note that I am not storing all the data contained in the raw binary file, merely
     # things I think are useful.
 
@@ -304,24 +304,24 @@ def rdradcp(name,
     adcp.ensemble_data = zeros(n,dtype=ens_dtype)
     adcp.bin_data = zeros((n,cfg.n_cells), dtype=bin_dtype)
 
-   
-        
+
+
     # Calibration factors for backscatter data
 
     # Loop for all records
     ens = None # force it to reinitialize
-    
+
     for k in range(n): # [python] k switched to zero-based
         # Gives display so you know something is going on...
-  
+
         if k%50==0:
             msg("%d\n"%(k*num_av))
-        msg(".") 
-  
+        msg(".")
+
         # Read an ensemble
-  
+
         [ens,hdr,cfg1,pos]=rd_buffer(fd,num_av,msg)
-  
+
         if ens is None: # ~isstruct(ens), # If aborting...
             msg("Only %d records found..suggest re-running RDRADCP using this parameter\n"%( (k-1)*num_av ))
             msg("(If this message preceded by a POSSIBLE PROGRAM PROBLEM message, re-run using %d)\n"%( (k-1)*num_av-1))
@@ -330,7 +330,7 @@ def rdradcp(name,
 
         dats = ensemble_dates(ens)
 
-        adcp.ensemble_data['mtime'][k]       =median(dats)  
+        adcp.ensemble_data['mtime'][k]       =median(dats)
         adcp.ensemble_data['number'][k]      =ens.number[0]
         adcp.ensemble_data['heading'][k]     =ssm.circmean(ens.heading*pi/180.)*180/pi
         adcp.ensemble_data['pitch'][k]       =mean(ens.pitch)
@@ -345,7 +345,7 @@ def rdradcp(name,
         adcp.ensemble_data['pressure_std'][k]=mean(ens.pressure_std)
 
         # [python] - order of indices for bin data is opposite matlab -
-        #   adcp.east_vel[ ensemble index, bin_index ] 
+        #   adcp.east_vel[ ensemble index, bin_index ]
         if type(vels) == str:
             adcp.bin_data['east_vel'][k,:]    =nmean(ens.east_vel ,0) # [python] axis changed to 0-based, and switched!
             adcp.bin_data['north_vel'][k,:]   =nmean(ens.north_vel,0) # assume ens.east_vel[sample_index,bin_index]
@@ -356,34 +356,34 @@ def rdradcp(name,
             adcp.bin_data['north_vel'][k,:]   =nmedian(ens.north_vel ,vels[0],0)
             adcp.bin_data['vert_vel'][k,:]    =nmedian(ens.vert_vel  ,vels[1],0)
             adcp.bin_data['error_vel'][k,:]   =nmedian(ens.error_vel ,vels[2],0)
-          
-        # per-beam, per bin data - 
+
+        # per-beam, per bin data -
         # adcp.corr[ensemble index, bin_index, beam_index ]
         adcp.bin_data['corr'][k,:,:]        =nmean(ens.corr,0)        # added correlation RKD 9/00
-        adcp.bin_data['status'][k,:,:]	=nmean(ens.status,0)   
-  
+        adcp.bin_data['status'][k,:,:]	=nmean(ens.status,0)
+
         adcp.bin_data['intens'][k,:,:]     =nmean(ens.intens,0)
         adcp.bin_data['perc_good'][k,:,:]  =nmean(ens.percent,0)  # felipe pimenta aug. 2006
-  
+
         adcp.ensemble_data['bt_range'][k,:]   =nmean(ens.bt_range,0)
         adcp.ensemble_data['bt_mode'][k]   = nmedian(ens.bt_mode)
         adcp.ensemble_data['bt_vel'][k,:]     =nmean(ens.bt_vel,0)
-  
+
         adcp.ensemble_data['bt_corr'][k,:]=nmean(ens.bt_corr,0)          # felipe pimenta aug. 2006
         adcp.ensemble_data['bt_ampl'][k,:]=nmean(ens.bt_ampl,0)          #  "
-        adcp.ensemble_data['bt_perc_good'][k,:]=nmean(ens.bt_perc_good,0)#  " 
-  
+        adcp.ensemble_data['bt_perc_good'][k,:]=nmean(ens.bt_perc_good,0)#  "
+
         if cfg.sourceprog == 'WINRIVER':
             #if cfg.sourceprog in ('instrument','WINRIVER'):
             adcp.ensemble_data['nav_mtime'][k]=nmean(ens.smtime)
             # these are sometimes nan - and note that nmean
             # modifies the input, so it looks like it should
             adcp.ensemble_data['nav_longitude'][k]=nmean(ens.slongitude)
-            adcp.ensemble_data['nav_latitude'][k]=nmean(ens.slatitude)  
+            adcp.ensemble_data['nav_latitude'][k]=nmean(ens.slatitude)
             # DBG
-            #print "nmean(%s) => %s"%(ens.slongitude,adcp.ensemble_data['nav_longitude'][k])            
-            #print "nmean(%s) => %s"%(ens.slatitude,adcp.ensemble_data['nav_latitude'][k])            
-            
+            #print "nmean(%s) => %s"%(ens.slongitude,adcp.ensemble_data['nav_longitude'][k])
+            #print "nmean(%s) => %s"%(ens.slatitude,adcp.ensemble_data['nav_latitude'][k])
+
             # out of curiosity, does this ever happen??
             #if cfg.sourceprog=='instrument' and isfinite(adcp.nav_latitude[k]) and adcp.nav_latitude[k]!=0:
             #    print "##################### instrument has some data ###################"
@@ -397,13 +397,13 @@ def rdradcp(name,
             adcp.ensemble_data['nav_mtime'][k]=nmean(ens.nmtime)
         ##
 
-  
+
     msg("\nRead to byte %d in a file of size %d bytes\n"%( fd.tell(),naminfo.st_size ) )
     if fd.tell()+hdr.nbyte<naminfo.st_size:
         msg("-->There may be another %d ensembles unread\n" % int((naminfo.st_size-fd.tell())/(hdr.nbyte+2)) )
-        
+
     fd.close()
-    
+
     if n < len(adcp.ensemble_data):
         msg("Truncating data to the valid set of records\n")
         adcp.ensemble_data = adcp.ensemble_data[:n]
@@ -424,26 +424,26 @@ def rdradcp(name,
             # punting on which lat/lon fields to reference
             msg("VMDAS input - assuming nav_s* fields are better than nav_e*\n")
             adcp.latitude = adcp.nav_slatitude
-            adcp.longitude = adcp.nav_slongitude        
+            adcp.longitude = adcp.nav_slongitude
             # the arrays are there, but the values aren't set yet
             #print("adcp lat/lon %f %f\n"%(adcp.latitude,adcp.longitude))
         elif cfg.sourceprog in ('WINRIVER'):
             adcp.latitude = adcp.nav_latitude
             adcp.longitude = adcp.nav_longitude
-            # too early to print 
+            # too early to print
             #print("adcp lat/lon %f %f\n"%(adcp.latitude[0],adcp.longitude[0]))
-        
+
 
     return adcp
 
-    
+
 
 
 #----------------------------------------
 #function valid=checkheader(fd)
 def checkheader(fd):
     """ Given an open file object, read the ensemble size, skip
-    ahead, make sure we can read the cfg bytes of the *next* 
+    ahead, make sure we can read the cfg bytes of the *next*
     ensemble, come back to the starting place, and report success.
     """
     valid=0
@@ -452,18 +452,18 @@ def checkheader(fd):
         # have to use the file descriptor version, since we're just getting
         # the file object, not a filename
         # info = os.fstat(fd.fileno())
-        numbytes=fromfile(fd,int16,1)          # Following the header bytes is numbytes               
+        numbytes=fromfile(fd,int16,1)          # Following the header bytes is numbytes
         if len(numbytes) and numbytes[0]>0:                                         # and we move forward numbytes>0
-            fd.seek(numbytes[0]-2,os.SEEK_CUR) 
+            fd.seek(numbytes[0]-2,os.SEEK_CUR)
             cfgid=fromfile(fd,uint8,2) # while return [] if hit EOF
             if len(cfgid)==2:                # will Skip the last ensemble (sloppy code)
-                # fprintf([dec2hex(cfgid(1)) ' ' dec2hex(cfgid(2)) '\n'])          
+                # fprintf([dec2hex(cfgid(1)) ' ' dec2hex(cfgid(2)) '\n'])
                 if cfgid[0]==0x7F and cfgid[1]==0x7F:          # and we have *another* 7F7F
-                    valid=1                                                    # ...ONLY THEN it is valid.   
+                    valid=1                                                    # ...ONLY THEN it is valid.
     finally:
         fd.seek(starting_pos)
     return valid
-     
+
 
 #-------------------------------------
 # function [hdr,pos]=rd_hdr(fd)
@@ -492,7 +492,7 @@ def rd_hdr(fd,msg=msg_print):
         if pos % 1000==0:
             msg("Still looking for valid cfgid at file position %d...\n"%pos)
         #end
-    #end 
+    #end
 
     pos=fd.tell()-2
     if nread>0:
@@ -512,7 +512,7 @@ def rd_fix(fd,msg=msg_print):
         msg("WARNING: ran into end of file reading Fixed header ID\n")
     elif cfgid[0] != 0: # 0x0000
         msg("WARNING: Fixed header ID %x incorrect - data corrupted or not a BB/WH raw file?\n"%cfgid[0])
-    #end 
+    #end
 
     cfg,nbytes=rd_fixseg(fd)
     return cfg
@@ -542,7 +542,7 @@ def getopt(val,*args):
         return 'unknown'
     else:
         return args[val]
-   			
+
 #
 #-------------------------------------
 # function [cfg,nbyte]=rd_fixseg(fd)
@@ -580,8 +580,8 @@ def rd_fixseg(fd):
     elif int(cfg.prog_ver) in (14,23):  # phase 1 and phase 2
         cfg.name='os-adcp'
     else:
-        cfg.name='unrecognized firmware version'       
-    #end    
+        cfg.name='unrecognized firmware version'
+    #end
 
     config         =fromfile(fd,uint8,2)  # Coded stuff
     cfg.config          ="%2o-%2o"%(config[1],config[0])
@@ -594,12 +594,12 @@ def rd_fixseg(fd):
     cfg.beam_pattern   =getopt(config[0]&8==8,'concave','convex') # 1=convex,0=concave
     cfg.orientation    =getopt(config[0]&128==128,'down','up')    # 1=up,0=down
 
-    ## HERE - 
-    # 8/31/12: code above here has been translated to python 
+    ## HERE -
+    # 8/31/12: code above here has been translated to python
     #  code below is still matlab.
     # a few notes on the translation:
     #   fread(fd,count,'type') => fromfile(fd,type,count)
-    #     note that fromfile always returns an array - so when count==1, you 
+    #     note that fromfile always returns an array - so when count==1, you
     #     may want fromfile(...)[0] to get back a scalar value
     #   returns are sneaky - since matlab defines the return values at the beginning
     #     but python must explicitly specify return values at each return statement
@@ -609,7 +609,7 @@ def rd_fixseg(fd):
     # RCH: fromfile returns a list, so index it with [0] to get an int
     cfg.simflag        =getopt(fromfile(fd,uint8,1)[0],'real','simulated') # Flag for simulated data
 
-    fd.seek(1,os.SEEK_CUR) # fseek(fd,1,'cof') 
+    fd.seek(1,os.SEEK_CUR) # fseek(fd,1,'cof')
 
     cfg.n_beams        =fromfile(fd,uint8,1)[0]
     cfg.n_cells        =fromfile(fd,uint8,1)[0]
@@ -629,7 +629,7 @@ def rd_fixseg(fd):
     # just like C...
     cfg.coord_sys      =getopt( (coord_sys >> 3)&3,'beam','instrument','ship','earth')
     # RCH: need into since it's an equality comparison which gives a boolean
-    cfg.use_pitchroll  =getopt(coord_sys&4==4,'no','yes')  
+    cfg.use_pitchroll  =getopt(coord_sys&4==4,'no','yes')
     cfg.use_3beam      =getopt(coord_sys&2==2,'no','yes')
     cfg.bin_mapping    =getopt(coord_sys&1==1,'no','yes')
 
@@ -649,7 +649,7 @@ def rd_fixseg(fd):
 
         if cfg.prog_ver>=8.14:  # Added CPU serial number with v8.14
             cfg.serialnum      =fromfile(fd,uint8,8)
-            nbyte+=8 
+            nbyte+=8
         #end
 
         if cfg.prog_ver>=8.24:  # Added 2 more :w  bytes with v8.24 firmware
@@ -674,7 +674,7 @@ def rd_fixseg(fd):
 
         if cfg.prog_ver>=9.10:  # Added CPU serial number with v8.14
             cfg.serialnum      =fromfile(fd,uint8,8)
-            nbyte+=8 
+            nbyte+=8
             cfg.sysbandwidth  =fromfile(fd,uint8,2)
             nbyte+=2
         end
@@ -690,10 +690,10 @@ def rd_fixseg(fd):
         cfg.ranges *= -1
 
     return cfg,nbyte
-	
+
 #-----------------------------
 #function [ens,hdr,cfg,pos]=rd_buffer(fd,num_av)
-ens_alloc = None 
+ens_alloc = None
 ens_alloc_num_av = None
 
 hdr = None
@@ -705,13 +705,13 @@ def rd_buffer(fd,num_av,msg=msg_print):
     returns [ens,hdr,cfg,pos]
     """
     # To save it being re-initialized every time.
-    # [python] cache the preallocated array in ens_alloc, and remember 
+    # [python] cache the preallocated array in ens_alloc, and remember
     # what num_av was, so we can reallocate when called with a different num_av.
     # otherwise global/local is too confusing, as other parts of the code use
     # ens both for a local variable and a global variable, or kind of appear to do
     # so.
     global ens_alloc,ens_alloc_num_av, hdr
-    pos = None 
+    pos = None
     # A fudge to try and read files not handled quite right.
     global FIXOFFSET, SOURCE
 
@@ -721,7 +721,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
 
     class Ensemble(object):
         pass
-    
+
     cfg=None
     ens=None
 
@@ -730,7 +730,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
 
     # This reinitializes to whatever length of ens we want to average.
     if num_av<0 or ens is None:
-        FIXOFFSET=0   
+        FIXOFFSET=0
         n=abs(num_av)
         [hdr,pos]=rd_hdr(fd,msg)
         if hdr is None:
@@ -819,7 +819,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
         startpos=fd.tell()-2  # Starting position.
 
         # Read the # data types.
-        [hdr,nbyte]=rd_hdrseg(fd)     
+        [hdr,nbyte]=rd_hdrseg(fd)
         byte_offset=nbyte+2
         ## fprintf('# data types = %d\n  ',(length(hdr.dat_offsets)))
         ## fprintf('Blocklen = %d\n  ',hdr.nbyte)
@@ -851,8 +851,8 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 # beginning of a record, but we want k to remain 0-based, so above
                 # it was initialized to -1 (just as in the matlab code it is initialized
                 # to 0).
-                k+=1 
-                
+                k+=1
+
                 ens.number[k]         =fromfile(fd,uint16,1)[0]
                 ens.rtc[k,:]          =fromfile(fd,uint8,7)
                 ens.number[k]         =ens.number[k]+65536*fromfile(fd,uint8,1)[0]
@@ -871,7 +871,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 ens.adc[k,:]          =fromfile(fd,uint8,8)
                 nbyte=2+40
 
-                if cfg.name =='bb-adcp': 
+                if cfg.name =='bb-adcp':
                     if cfg.prog_ver>=5.55:
                         fd.seek(15,os.SEEK_CUR) # 14 zeros and one byte for number WM4 bytes
                         cent=fromfile(fd,uint8,1)[0]            # possibly also for 5.55-5.58 but
@@ -879,51 +879,51 @@ def rd_buffer(fd,num_av,msg=msg_print):
                         ens.rtc[k,0] += cent*100
                         nbyte+=15+8
                     # end
-                elif cfg.name == 'wh-adcp': # for WH versions.		
+                elif cfg.name == 'wh-adcp': # for WH versions.
                     ens.error_status_wd[k]=fromfile(fd,uint32,1)[0]
                     nbyte+=4
- 
+
                     if int(cfg.prog_ver) in (8,10,16,50,51,52):
                         if cfg.prog_ver>=8.13:  # Added pressure sensor stuff in 8.13
-                            fd.seek(2,os.SEEK_CUR)   
+                            fd.seek(2,os.SEEK_CUR)
                             ens.pressure[k]       =fromfile(fd,uint32,1)[0]
                             ens.pressure_std[k]   =fromfile(fd,uint32,1)[0]
-                            nbyte+=10  
+                            nbyte+=10
                         # end
- 
+
                         if cfg.prog_ver>=8.24:  # Spare byte added 8.24
                             fd.seek(1,os.SEEK_CUR)
                             nbyte+=1
                         # end
- 
+
                         if ( cfg.prog_ver>=10.01 and cfg.prog_ver<=10.99 ) or \
                                 cfg.prog_ver>=16.05:   # Added more fields with century in clock 16.05
-                            cent=fromfile(fd,uint8,1)[0] 
-                            ens.rtc[k,:]=fromfile(fd,uint8,7)   
+                            cent=fromfile(fd,uint8,1)[0]
+                            ens.rtc[k,:]=fromfile(fd,uint8,7)
                             ens.rtc[k,0]+=cent*100
                             nbyte+=8
                         # end
                     elif int(cfg.prog_ver)==9:
-                        fd.seek(2,os.SEEK_CUR)   
-                        ens.pressure[k]       =fromfile(fd,uint32,1)[0]  
+                        fd.seek(2,os.SEEK_CUR)
+                        ens.pressure[k]       =fromfile(fd,uint32,1)[0]
                         ens.pressure_std[k]   =fromfile(fd,uint32,1)[0]
-                        nbyte+=10  
-  
+                        nbyte+=10
+
                         if cfg.prog_ver>=9.10:  # Spare byte added 8.24
                             fd.seek(1,os.SEEK_CUR)
                             nbyte+=1
                         # end
                     # end
-                
+
 
                 elif cfg.name=='os-adcp':
                     fd.seek(16,os.SEEK_CUR) # 30 bytes all set to zero, 14 read above
                     nbyte+=16
- 
+
                     if cfg.prog_ver>23:
                         fd.seek(2,os.SEEK_CUR)
                         nbyte+=2
-                    #end    
+                    #end
                 #end
             elif id_ == '0100':  # Velocities
                 # RCH: will need to check array ordering on these - may have rows/cols
@@ -938,7 +938,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 # RCH check array ordering:
                 ens.corr[k,:,:]   =fromfile(fd,uint8,4*cfg.n_cells).reshape([cfg.n_cells,4])
                 nbyte=2+4*cfg.n_cells
-            elif id_ == '0300':  # Echo Intensities  
+            elif id_ == '0300':  # Echo Intensities
                 # RCH check array ordering:
                 ens.intens[k,:,:]   =fromfile(fd,uint8,4*cfg.n_cells).reshape([cfg.n_cells,4])
                 nbyte=2+4*cfg.n_cells
@@ -948,7 +948,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
             elif id_ == '0500':  # Status
                 # RESUME TRANSLATION HERE
                 # Rusty, I was not consistent about retaining "end" statements
-                # I noticed after deleting several that you had been keeping 
+                # I noticed after deleting several that you had been keeping
                 # commented out versions.
                 if cfg.name=='os-adcp':
                     # fd.seek(00,os.SEEK_CUR) # zero seek is in the original matlab...
@@ -965,13 +965,13 @@ def rd_buffer(fd,num_av,msg=msg_print):
                     fd.seek(2,os.SEEK_CUR)
                     # Rusty, I added the [0] below and in several other places
                     long1=fromfile(fd,uint16,1)[0]
-                    
+
                     # added bt mode extraction  - ben
-                    fd.seek(3,os.SEEK_CUR)                    
+                    fd.seek(3,os.SEEK_CUR)
                     ens.bt_mode[k] = float64(fromfile(fd,uint8,1)[0]) # fromfile(fd,uint8,1)[0]
-                    
+
                     fd.seek(2,os.SEEK_CUR)
-                    #fd.seek(6,os.SEEK_CUR)           
+                    #fd.seek(6,os.SEEK_CUR)
                     ens.slatitude[k]  =fromfile(fd,int32,1)[0]*cfac
                     if ens.slatitude[k]==0:
                         ens.slatitude[k]=nan
@@ -980,7 +980,7 @@ def rd_buffer(fd,num_av,msg=msg_print):
                     fd.seek(7,os.SEEK_CUR) # Skip over a bunch of stuff
                     ens.bt_mode[k] = float64(fromfile(fd,uint8,1)[0])
                     fd.seek(6,os.SEEK_CUR) # Skip over a bunch of stuff
-                    
+
                 # end
                 ens.bt_range[k,:]=fromfile(fd,uint16,4)*.01 #
                 ens.bt_vel[k,:]  =fromfile(fd,int16,4)
@@ -1006,17 +1006,17 @@ def rd_buffer(fd,num_av,msg=msg_print):
                         ens.slongitude[k]=nan
                     fd.seek(16,os.SEEK_CUR)
                     qual=fromfile(fd,uint8,1)
-                    if qual==0: 
+                    if qual==0:
                         ## fprintf('qual==%d,%f %f',qual,ens.slatitude(k),ens.slongitude(k))
                         ens.slatitude[k]=nan
                         ens.slongitude[k]=nan
                     fd.seek(71-45-21,os.SEEK_CUR)
-                else:   
+                else:
                     fd.seek(71-45,os.SEEK_CUR)
                 # end
                 nbyte=2+68
                 if cfg.prog_ver>=5.3:    # Version 4.05 firmware seems to be missing these last 11 bytes.
-                    fd.seek(78-71,os.SEEK_CUR)  
+                    fd.seek(78-71,os.SEEK_CUR)
                     ens.bt_range[k,:]=ens.bt_range[k,:]+fromfile(fd,uint8,4)*655.36
                     nbyte+=11
 
@@ -1027,15 +1027,15 @@ def rd_buffer(fd,num_av,msg=msg_print):
                         #end
                     #end
                 #end
-                                
+
             # end # id_==0600 # bottom track
             elif id_ == '2000':  # Something from VMDAS.
                 # The raw files produced by VMDAS contain a binary navigation data
-                # block. 
+                # block.
                 cfg.sourceprog='VMDAS'
                 if SOURCE != 1:
                     msg("\n***** Apparently a VMDAS file \n")
-                #end    
+                #end
                 SOURCE=1
                 utim  =fromfile(fd,uint8,4)
                 mtime =datenum(utim[3]+utim[4]*256,utim[2],utim[1])
@@ -1046,8 +1046,8 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 ens.emtime[k]     =mtime+fromfile(fd,uint32,1)[0]/8640000.
                 ens.elatitude[k]  =fromfile(fd,int32,1)[0]*cfac
                 ens.elongitude[k] =fromfile(fd,int32,1)[0]*cfac
-                fd.seek(12,os.SEEK_CUR)   
-                ens.flags[k]      =fromfile(fd,uint16,1)[0]	
+                fd.seek(12,os.SEEK_CUR)
+                ens.flags[k]      =fromfile(fd,uint16,1)[0]
                 fd.seek(6,os.SEEK_CUR)
                 utim  =fromfile(fd,uint8,4)
                 mtime =datenum(utim(1)+utim(2)*256,utim(4),utim(3))
@@ -1060,18 +1060,18 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 cfg.sourceprog='WINRIVER2'
                 if SOURCE != 2:
                     msg("\n***** Apparently a WINRIVER file - Raw NMEA data handler not yet implemented\n")
-                #end 
+                #end
                 SOURCE=2
- 
+
                 specID=fromfile(fd,uint16,1)[0]
                 msgsiz=fromfile(fd,int16,1)[0]
                 deltaT=fromfile(fd,uint8,8)
                 nbyte=2+12
- 
+
                 fd.seek(msgsiz,os.SEEK_CUR)
                 nbyte+=msgsiz
                 # print "post msgsiz, nbyte=%d"%nbyte
- 
+
                 ## do nothing code on specID
                 #    fprintf(' %d ',specID)
                 #              switch specID,
@@ -1080,8 +1080,8 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 #                  case 102,
                 #                  case 103,
                 #              end
- 
- 
+
+
             # The following blocks come from WINRIVER files, they aparently contain
             # the raw NMEA data received from a serial port.
             #
@@ -1094,25 +1094,25 @@ def rd_buffer(fd,num_av,msg=msg_print):
             # do it here, without an error message to emphasize that I am kludging the WINRIVER blocks only!
             elif id_ in ('2100','2101','2102','2103','2104'):
                 winrivprob=1
- 
+
                 if id_ == '2100': # $xxDBT  (Winriver addition) 38
                     cfg.sourceprog='WINRIVER'
                     if SOURCE != 2:
                         msg("\n***** Apparently a WINRIVER file - Raw NMEA data handler not yet implemented\n")
                     SOURCE=2
-                    str_=fd.read(38) # fromfile(fd,uchar,38)
+                    str_=fd.read(38)#.decode('utf-8') # fromfile(fd,uchar,38)
                     nbyte=2+38
- 
+
                 elif id_ == '2101': # $xxGGA  (Winriver addition) 94 in manual but 97 seems to work
                     # Except for a winriver2 file which seems to use 77.
                     cfg.sourceprog='WINRIVER'
                     if SOURCE != 2:
                         msg("\n***** Apparently a WINRIVER file - Raw NMEA data handler not yet implemented\n")
                     SOURCE=2
-                    str_=fd.read(97) # setstr(fromfile(fd,uchar,97))
+                    str_=fd.read(97)#.decode('utf-8') # setstr(fromfile(fd,uchar,97))
                     nbyte=2+97
 
-                    l = str_.find('$GPGGA')
+                    l = str_.find(b'$GPGGA')
                     if l >= 0:
                         # original indices: str(l+7:l+8) str(l+9:l+10) str(l+11:l+12)
                         # but we are both zero-based, and ending index is exclusive...
@@ -1132,66 +1132,66 @@ def rd_buffer(fd,num_av,msg=msg_print):
                         msg("\n***** Apparently a WINRIVER file - Raw NMEA data handler not yet implemented\n")
                     #end
                     SOURCE=2
-                    str_=fd.read(45)
+                    str_=fd.read(45)#.decode('utf-8')
                     nbyte=2+45
                     #disp(setstr(str_))
- 
+
                 elif id_ == '2103': # $xxGSA  (Winriver addition) 60
                     cfg.sourceprog='WINRIVER'
                     if SOURCE != 2:
                         msg("\n***** Apparently a WINRIVER file - Raw NMEA data handler not yet implemented\n")
                     #end
                     SOURCE=2
-                    str_=fd.read(60)
+                    str_=fd.read(60)#.decode('utf-8')
                     nbyte=2+60
- 
+
                 elif id_ == '2104':  #xxHDT or HDG (Winriver addition) 38
                     cfg.sourceprog='WINRIVER'
                     if SOURCE != 2:
                         msg("\n***** Apparently a WINRIVER file - Raw NMEA data handler not yet implemented\n")
                     #end
                     SOURCE=2
-                    str_=fd.read(38)
+                    str_=fd.read(38)#.decode('utf-8')
                     nbyte=2+38
- 
+
             elif id_ == '0701': # Number of good pings
                 fd.seek(4*cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+4*cfg.n_cells
- 
+
             elif id_ == '0702': # Sum of squared velocities
                 fd.seek(4*cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+4*cfg.n_cells
- 
-            elif id_ == '0703': # Sum of velocities      
+
+            elif id_ == '0703': # Sum of velocities
                 fd.seek(4*cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+4*cfg.n_cells
- 
+
             # These blocks were implemented for 5-beam systems
- 
+
             elif id_ == '0A00': # Beam 5 velocity (not implemented)
                 fd.seek(cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+cfg.n_cells
- 
+
             elif id_ == '0301': # Beam 5 Number of good pings (not implemented)
                 fd.seek(cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+cfg.n_cells
- 
+
             elif id_ == '0302': # Beam 5 Sum of squared velocities (not implemented)
                 fd.seek(cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+cfg.n_cells
- 
+
             elif id_ == '0303': # Beam 5 Sum of velocities (not implemented)
                 fd.seek(cfg.n_cells,os.SEEK_CUR)
                 nbyte=2+cfg.n_cells
- 
+
             elif id_ == '020C': # Ambient sound profile (not implemented)
                 fd.seek(4,os.SEEK_CUR)
                 nbyte=2+4
- 
-            elif id_ == '3000':  # Fixed attitude data format for OS-ADCPs (not implemented)	     
+
+            elif id_ == '3000':  # Fixed attitude data format for OS-ADCPs (not implemented)
                 fd.seek(32,os.SEEK_CUR)
                 nbyte=2+32
- 
+
             else:
                 # This is pretty idiotic - for OS-ADCPs (phase 2) they suddenly decided to code
                 # the number of bytes into the header ID word. And then they don't really
@@ -1205,40 +1205,40 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 if id_[:2] == '30':
                     # I want to count the number of 1s in the middle 4 bits of the
                     # 2nd two bytes.
-                    
+
                     nflds= bin( int(id_[2:4],16) & 0x3C ).count('1')
                     # I want to count the number of 1s in the highest 2 bits of byte 3
                     dfac =  bin(int(id_[2],16)&0x0C).count('1')
                     fd.seek(12*nflds*dfac,os.SEEK_CUR)
                     nbyte=2+12*nflds*dfac
- 
+
                 else:
                     msg( "Unrecognized ID code: %s"%id_ )
-                    # DBG: 
+                    # DBG:
                     #raise Exception,"STOP"
                     nbyte=2
                     ens = None
                     return ens,hdr,cfg,pos
 
                 ## ens=-1
-                ## 
+                ##
             #end
- 
+
             # here I adjust the number of bytes so I am sure to begin
             # reading at the next valid offset. If everything is working right I shouldn't have
             # to do this but every so often firware changes result in some differences.
 
             # print '#bytes is %d, original offset is %d'%(nbyte,byte_offset)
-            byte_offset=byte_offset+nbyte   
- 
+            byte_offset=byte_offset+nbyte
+
             # both n and hdr.dat_offsets are now 0-based, but len() is unchanged - so be
             # careful on comparisons to len(hdr.dat_offsets)
             if n+1<len(hdr.dat_offsets):
                 if hdr.dat_offsets[n+1] != byte_offset:
-                    if not winrivprob: 
+                    if not winrivprob:
                         msg("%s: Adjust location by %d\n"%(id_,hdr.dat_offsets[n+1]-byte_offset) )
                     fd.seek(hdr.dat_offsets[n+1]-byte_offset,os.SEEK_CUR)
-                #end	
+                #end
                 byte_offset=hdr.dat_offsets[n+1]
             else:
                 if hdr.nbyte-2 != byte_offset:
@@ -1249,21 +1249,21 @@ def rd_buffer(fd,num_av,msg=msg_print):
                 byte_offset=hdr.nbyte-2
             #end
         #end
- 
+
         # Now at the end of the record we have two reserved bytes, followed
         # by a two-byte checksum = 4 bytes to skip over.
- 
+
         readbytes=fd.tell()-startpos
         offset=(hdr.nbyte+2)-byte_offset # The 2 is for the checksum
- 
-        if offset !=4 and FIXOFFSET==0: 
+
+        if offset !=4 and FIXOFFSET==0:
             # in python, no direct test for eof (annoying), so step back one byte,
             # and try to read it.  not sure that this will do the right thing if the
             # last thing we did was a failed read - it definitely works if the last thing
             # was a bad seek
             fd.seek(-1,os.SEEK_CUR)
             feof = len(fd.read(1)) == 0
- 
+
             msg("\n*****************************************************\n")
             if feof:
                 msg("EOF reached unexpectedly - discarding this last ensemble\n")
@@ -1279,30 +1279,30 @@ def rd_buffer(fd,num_av,msg=msg_print):
             #end
             msg("******************************************************\n")
             FIXOFFSET=offset-4
-        #end  
-        fd.seek(4+FIXOFFSET,os.SEEK_CUR) 
- 
+        #end
+        fd.seek(4+FIXOFFSET,os.SEEK_CUR)
+
         # An early version of WAVESMON and PARSE contained a bug which stuck an additional two
-        # bytes in these files, but they really shouldn't be there 
-        #if cfg.prog_ver>=16.05,    
+        # bytes in these files, but they really shouldn't be there
+        #if cfg.prog_ver>=16.05,
         #	  fd.seek(2,os.SEEK_CUR)
         #end
- 
+
     #end
- 
+
     # Blank out stuff bigger than error velocity
     # big_err=abs(ens.error_vel)>.2
     # big_err=0
- 
-    # Blank out invalid data 
-    # RCH: removed big_err references    
+
+    # Blank out invalid data
+    # RCH: removed big_err references
     ens.east_vel[ens.east_vel==-32.768]=nan
-    ens.north_vel[ens.north_vel==-32.768]=nan 
+    ens.north_vel[ens.north_vel==-32.768]=nan
     ens.vert_vel[ens.vert_vel==-32.768]=nan
     ens.error_vel[ens.error_vel==-32.768]=nan
 
     return ens,hdr,cfg,pos
- 
+
 
 #--------------------------------------
 #function y=nmedian(x,window,dim)
@@ -1316,15 +1316,15 @@ def nmedian(x,window=inf,dim=None):
 
     x = array(x) # probably not necessary
 
-    if dim is None: 
+    if dim is None:
         # choose dim to be the first non-unity dimension of x
         long_dims = [d for d in range(x.ndim) if x.shape[d]>1]
         # and if none are long, revert to summing over 0
         dim = (long_dims + [0])[0]
     #end
 
-    # Depart slightly from the original matlab for dealing with 
-    # the case when dim>=x.ndim.  Make x one dimension bigger, 
+    # Depart slightly from the original matlab for dealing with
+    # the case when dim>=x.ndim.  Make x one dimension bigger,
     # and set dim to be that.  Then all the computations are simpler,
     # and if necessary the dimensions can be remangled at the end
     orig_dim = dim
@@ -1354,16 +1354,16 @@ def nmedian(x,window=inf,dim=None):
     [n1,n2]=x.shape
 
     if n1==1: # each column has only one row - no stats to be taken, just copy.
-        y=x 
+        y=x
     else:
         if n2==1:
-            # summing booleans is safe - 
+            # summing booleans is safe -
             kk=sum(isfinite(x))
             if kk > 0:
                 # x1,x2:  if kk is even, the two middle elements
                 #         if kk is odd, both are set to the middle element
-                x1=x[ int((kk-1)/2) ] 
-                x2=x[ int(kk/2)     ] 
+                x1=x[ int((kk-1)/2) ]
+                x2=x[ int(kk/2)     ]
                 deviations = abs(x-(x1+x2)/2.)
                 x[deviations>window]=nan
             #end
@@ -1381,15 +1381,15 @@ def nmedian(x,window=inf,dim=None):
             ll = kk<n1-2 # ll is true for rows with at least 2 nans
             kk[ll]=0 ; x[:,ll]=nan # in those cases, the answer is nan.  seems harsh.
 
-            # whoa - presumably want to pull the middle two valid values from 
+            # whoa - presumably want to pull the middle two valid values from
             # each row
             low_median = ((kk-1)/2).clip(0,inf).astype(int32)
             high_median = (kk/2).clip(0,inf).astype(int32)
             x1=x[ low_median, range(n2)]
             x2=x[ high_median, range(n2)]
-     
+
             # x1,x2 have to get the extra dimension for the broadcast to work
-            deviations = abs(x - (x1+x2)[None,...]/2.) 
+            deviations = abs(x - (x1+x2)[None,...]/2.)
             x[deviations>window]=nan
             x.sort(axis=0)
             kk=sum(isfinite(x),axis=0)
@@ -1400,8 +1400,8 @@ def nmedian(x,window=inf,dim=None):
                 y[valid] = sum(x[:,valid],axis=0) / kk[valid]
             # end
         #end
-    #end 
-                
+    #end
+
     # Now we have y, which has shape x.shape[1:]
     # make that back into the shape of x, first by undoing
     # the reshape (recalling that we squished the first dimension of x)
@@ -1426,14 +1426,14 @@ def nmedian(x,window=inf,dim=None):
 def nmean(x,dim=None):
     # R_NMEAN Computes the mean of matrix ignoring NaN
     #         values
-    #   R_NMEAN(X,DIM) takes the mean along the dimension DIM of X. 
+    #   R_NMEAN(X,DIM) takes the mean along the dimension DIM of X.
     #
     xorig = x
     x=x.copy() # to get matlab semantics
     kk=isfinite(x)
     x[~kk]=0
 
-    if dim is None: 
+    if dim is None:
         # choose dim to be the first non-unity dimension of x
         long_dims = [d for d in range(x.ndim) if x.shape[d]>1]
         # and if none are long, revert to summing over 0
@@ -1455,6 +1455,6 @@ def nmean(x,dim=None):
         y = atleast_1d(sum(x,axis=dim))/ndat.astype(float64)
         y[indat]=nan
     #end
-    
+
     return y
 
