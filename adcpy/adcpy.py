@@ -1031,12 +1031,16 @@ class ADCPData(object):
         Restricts ensembles to the range given, returning a new cropped copy of the ADCPData
         class
         Inputs:
-            l_bounds = lower ensemble bound
-            u_bounds = upper ensemble bound
+            l_bound = lower ensemble bound
+            u_bound = upper ensemble bound
             extra_fields = extra arrays to reshape
         """
         a = self.self_copy()
         if axis == 'ensemble':
+
+            if abs(l_bound) >= self.n_ensembles or abs(u_bound) >= self.n_ensembles:
+                print('Warning l_bound or u_bound not in range of n_ensembles, returning None')
+                return None
 
             a.velocity = a.velocity[l_bound:u_bound, ...]
             if a.mtime is not None:
@@ -1048,16 +1052,21 @@ class ADCPData(object):
             if extra_fields:
                 for f in extra_fields:
                     if hasattr(self, f):
-                        data = np.squeeze(getattr(self, f))
-                        if np.shape(data)[0] == 1 and len(np.shape(data)) > 1:
-                            # special case of double-array single-dim variables, not sure why we carry these around
-                            data = np.squeeze(data)
-                            setattr(a, f, np.array(data[l_bound:u_bound, ...]))
-                        else:
-                            setattr(a, f, data[l_bound:u_bound, ...])
+                        if getattr(self, f) is not None:
+                            data = np.squeeze(getattr(self, f))
+                            if np.shape(data)[0] == 1 and len(np.shape(data)) > 1:
+                                # special case of double-array single-dim variables, not sure why we carry these around
+                                data = np.squeeze(data)
+                                setattr(a, f, np.array(data[l_bound:u_bound, ...]))
+                            else:
+                                setattr(a, f, data[l_bound:u_bound, ...])
             a.n_ensembles = np.shape(a.velocity)[0]
 
         elif axis=='bins':
+
+            if abs(l_bound) >= self.n_ensembles or abs(u_bound) >= self.n_ensembles:
+                print('Warning l_bound or u_bound not in range of n_bins, returning None')
+                return None
 
             a.velocity = a.velocity[:,l_bound:u_bound,:]
             a.bin_center_elevation = a.bin_center_elevation[l_bound:u_bound]
@@ -1142,11 +1151,11 @@ class ADCPData(object):
                                                       self.velocity[:,:,i],
                                                       np.shape(self.velocity[:,:,i]),
                                                       a.velocity[:,:,i],
-                                                      np.shape(a.velocity[:,:,i]))
+                                                      np.shape(a.velocity[:,:,i]),axis=0)
             new_mtime = util.concatenate_array_w_fill(self.mtime,
                                                       (self.n_ensembles,),
                                                       a.mtime,
-                                                      (a.n_ensembles,))
+                                                      (a.n_ensembles,),axis=0)
             if self.lonlat is None and self.xy is not None:
                 self.xy_to_lonlat()
             if a.lonlat is None and a.xy is not None:
@@ -1157,7 +1166,7 @@ class ADCPData(object):
                 new_lonlat = util.concatenate_array_w_fill(self.lonlat,
                                                       (self.n_ensembles,2),
                                                       a.lonlat,
-                                                      (a.n_ensembles,2))
+                                                      (a.n_ensembles,2),axis=0)
             self.append_ensembles_extra(a)
 
             self.velocity = new_velocity
@@ -1210,10 +1219,10 @@ class ADCPTransectData(ADCPData):
         if self.bt_velocity is not None:
             bt_velocity_var = grp.createVariable('bt_velocity','f8',
                                                    (self.nc_ensemble_dim,
-                                                    'component2'),
+                                                    'component3'),
                                                     zlib=zlib)
             bt_velocity_var.units = 'm/s'
-            bt_velocity_var[...] = self.bt_velocity[:,:2]
+            bt_velocity_var[...] = self.bt_velocity[:,:3]
 
 
     def append_ensembles_extra(self,a):
@@ -1222,21 +1231,26 @@ class ADCPTransectData(ADCPData):
             self.adcp_depth = util.concatenate_array_w_fill(self.adcp_depth,
                                                   (self.n_ensembles,),
                                                   a.adcp_depth,
-                                                  (a.n_ensembles,))
+                                                  (a.n_ensembles,),axis=0)
 
         if self.bt_depth is not None:
             self.bt_depth = util.concatenate_array_w_fill(self.bt_depth.flatten(),
                                                   (self.n_ensembles,),
                                                   a.bt_depth.flatten(),
-                                                  (a.n_ensembles,))
+                                                  (a.n_ensembles,),axis=0)
             self.bt_depth = np.array([self.bt_depth])
 
         if self.bt_velocity is not None:
-            self.bt_velocity = util.concatenate_array_w_fill(self.bt_velocity[:,:2],
-                                                      (self.n_ensembles,2),
-                                                      a.bt_velocity[:,:2],
-                                                      (a.n_ensembles,2))
-
+            # below was original - why only first 2 rows of bt data? I see 4 rows now
+            # ----------------------------------------------
+            # self.bt_velocity = util.concatenate_array_w_fill(self.bt_velocity[:,:2],
+            #                                           (self.n_ensembles,2),
+            #                                           a.bt_velocity[:,:2],
+            #                                           (a.n_ensembles,2))
+            self.bt_velocity = util.concatenate_array_w_fill(self.bt_velocity,
+                                                      np.shape(self.bt_velocity),
+                                                      a.bt_velocity,
+                                                      np.shape(a.bt_velocity),axis=0)
 
     def read_nc_extra(self,grp):
         """
@@ -1457,7 +1471,8 @@ class ADCPTransectData(ADCPData):
                 self.velocity[:,:,i][mask] = np.nan
         if self.heading is not None:
             # does not make sense to sd_drop heading.  Doens't really make sense
-            # to xy_regrid heading either ... should this var be dropped during regrid?
+            # to xy_regrid heading either ... this is likely wrong, needs special circular averaging
+            print('Warning: regridding heading is not supported - average bins do not yet account for circular transform')
             self.heading = util.xy_regrid(heading_interp,xy,xy_new,
                                            pre_calcs=pre_calcs,kind=kind)
         if self.bt_velocity is not None:
@@ -1465,13 +1480,75 @@ class ADCPTransectData(ADCPData):
                                            pre_calcs=pre_calcs,kind=kind,
                                            sd_drop=sd_drop_alt)
 
+    def t_regrid(self,dt,dz,sd_drop=0,sd_drop_alt=0):
+        """
+        Regrids velocities onto a regular grid defined by dt and dz.
+        This process changes the the dimensions of almost every piece of data in
+        the class. Regridding is accomplished through bin-averaging values that
+        fall within a grid cell defined by dt and dz.  This is designed for
+        data reduction - unknown results may occur if up-sampling is attempted.
+        Returns intermediate calculations to facilitate regridding of additional
+        data by subclasses.
+        Inputs:
+            dt = new grid time resolution in matplotlib datenum format
+            dz = new grid z resolution in z units
+            sd_drop = number of standard deviations above which data in a bin is dropped from
+              averaging
+        Returns:
+            t = ensemble times, 1D array of shape [ne]
+            t_new = new grid ensemble times , 1D array of shape [ne2]
+            z = z positions, 1D array of shape [nb]
+            z_new = z positions of new grid, 1D array of shape [nb2]
+            dummy variable for compatibility - None returned
+            pre_calcs = python list of different intermediate things - see
+              ADCPy_utilities.py
+        """
+        # call base method to start regridding of base data, and get
+        # new grid info
+        prev_mtime = self.mtime
+        (t, t_new, z, z_new, dummy, pre_calcs) = super(ADCPTransectData,self).t_regrid(dt,dz,sd_drop=sd_drop)
+
+        adcp_depth_interp = self.adcp_depth
+        bt_depth_interp = np.squeeze(self.bt_depth)
+        heading_interp = self.heading
+        bt_velocity_interp = self.bt_velocity
+
+        # regrid transect variables
+        pre_calcs_t = (t, None, None, t_new, None, None)
+
+        if np.size(self.adcp_depth) > 1:
+            self.adcp_depth = util.xy_regrid(adcp_depth_interp, t, t_new,
+                                 pre_calcs=pre_calcs_t,kind='bin average', sd_drop=sd_drop_alt)
+
+        if self.bt_depth is not None:
+            self.bt_depth = util.xy_regrid(bt_depth_interp, t, t_new,
+                                 pre_calcs=pre_calcs_t,kind='bin average', sd_drop=sd_drop_alt)
+
+        if self.heading is not None:
+            # does not make sense to sd_drop heading.  Doens't really make sense
+            # to xy_regrid heading either ... this is likely wrong, needs special circular averaging
+            print('Warning: regridding heading is not supported - average bins do not yet account for circular transform')
+            self.heading = util.xy_regrid(heading_interp, t, t_new,
+                                 pre_calcs=pre_calcs_t,kind='bin average')
+
+        if self.bt_velocity is not None:
+            self.bt_velocity = util.xy_regrid_multiple(bt_velocity_interp,t, t_new,
+                                 pre_calcs=pre_calcs_t,kind='bin average')
+
+        # return vars such that sub-classes with more xy dimension variables can regrid
+        return (t, t_new, z, z_new, None, pre_calcs)
+
+
     def split_by_ensemble(self,split_nums,extra_fields=[]):
-        a = super(ADCPTransectData,self).split_by_ensemble(split_nums,
+        sub_adcps = super(ADCPTransectData,self).split_by_ensemble(split_nums,
             extra_fields=extra_fields+['adcp_depth','bt_depth','bt_velocity'])
+        return sub_adcps
 
     def crop(self,l_bound,u_bound,extra_fields=[],axis='ensemble'):
         a = super(ADCPTransectData,self).crop(l_bound,u_bound,
             extra_fields=extra_fields+['adcp_depth','bt_depth','bt_velocity'],axis=axis)
+        if a is None:
+            return None
         if len(np.shape(a.bt_depth)) == 1:
             a.bt_depth = np.array([a.bt_depth])
         return a

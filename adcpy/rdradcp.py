@@ -194,6 +194,7 @@ def rdradcp(name,
     def msg(s):
         log_fp.write(s)
         log_fp.flush()
+        #print(s)
 
     century=baseyear  # ADCP clock does not have century prior to firmware 16.05.
     vels=despike   # Default to simple averaging
@@ -257,6 +258,8 @@ def rdradcp(name,
     naminfo = os.stat(name)
     nensinfile=int(naminfo.st_size/(hdr.nbyte+2+extrabytes))
     msg("\nEstimating %d ensembles in this file\n"%nensinfile)
+    print("Estimating %d ensembles in this file"%nensinfile)
+
 
     # [python] nens, if a sequence, is taken to be 1-based, inclusive indices.
     # This is counter to the normal python interpretation, but instead
@@ -1213,12 +1216,32 @@ def rd_buffer(fd,num_av,msg=msg_print):
                     nbyte=2+12*nflds*dfac
 
                 else:
+                    # fprintf('Unrecognized ID code: %sh',dec2hex(id,4));
+                    # if n<length(hdr.dat_offsets),
+                    # skp=hdr.dat_offsets(n+1)-hdr.dat_offsets(n);
+                    # else
+                    # skp=hdr.nbyte-hdr.dat_offsets(n);
+                    # end;
+                    # fprintf(' - Skipping forward %d bytes\n',skp);
+                    # fseek(fd,skp,'cof');
+
                     msg( "Unrecognized ID code: %s"%id_ )
                     # DBG:
                     #raise Exception,"STOP"
-                    nbyte=2
-                    ens = None
-                    return ens,hdr,cfg,pos
+
+                    # code before skip implemented
+                    # --------------------------------
+                    #nbyte=2
+                    #ens = None
+                    #return ens,hdr,cfg,pos
+
+                    if n < len(hdr.dat_offsets)-1:
+                        skp = hdr.dat_offsets[n+1]-hdr.dat_offsets[n]
+                    else:
+                        skp = hdr.nbyte - hdr.dat_offsets[n]
+                    msg(' - Skipping forward %d bytes\n'%skp)
+                    # fseek(fd,skp,'cof')
+                    fd.seek(skp, os.SEEK_CUR)
 
                 ## ens=-1
                 ##

@@ -14,7 +14,10 @@ import re,os
 #import netCDF4
 from . import rdradcp
 #reload(rdradcp)
-from .pynmea import streamer
+#from .pynmea import streamer
+
+from pynmeagps import NMEAReader
+
 #import io.StringIO as cStringIO
 import io
 from . import adcpy_utilities as au
@@ -39,6 +42,10 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
     baseyear = 2000
     despike = 'no'
     quiet = True
+
+    nens = None
+    num_av = 1
+    adcp_depth = None
     
     kwarg_options = ['nav_file',      # file path of optional NMEA navigational file
                      'num_av',        # integer - may be used to average ensembles during reading
@@ -59,17 +66,14 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         """        
         # set some defaults
         self.nav_file=None
-        num_av=1
-        nens=None
-        self.adcp_depth=None
 
         for k, v in kwargs.items(): #kwarg_options:
             if k in self.kwarg_options:
                 setattr(self,k,v)
 
         # set parameters passed to rdradcp
-        self.rdradcp_num_av = num_av
-        self.rdradcp_nens = nens
+        self.rdradcp_num_av = self.num_av
+        self.rdradcp_nens = self.nens
         self.rdradcp_adcp_depth = self.adcp_depth
 
         if not os.path.exists(raw_file):
@@ -92,8 +96,63 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
             raise IOError("Cannot find %s"%self.nav_file)
 
         if self.nav_file:
-            self.read_nav()
+            self.read_nav_pynmeagps()
         self.valid = self.read_raw_data()
+
+    def read_nav_pynmeagps(self):
+        """ Reads NMEA stream data, prepared for transforn to latlon and
+        mtime data structures
+        """
+
+
+        with open(self.nav_file,'rb') as fp:
+
+            nmea = NMEAReader(fp)
+
+            self.ensemble_gps_indexes = []  # [ensemble #, index into gps_data]
+            self.gps_data = []  # [ day_fraction, lat, lon]
+
+            for raw_data, sentence in nmea:
+                try:
+                    if sentence.identity == 'GPGGA':  # a fix
+                        gps_q = int(sentence.quality)
+                        if gps_q < 1:
+                            continue  # not a valid fix.
+                        lat_s = sentence.latitude
+                        lon_s = sentence.longitude
+                        try:
+                            lat = int(lat_s[:2]) + float(lat_s[2:]) / 60.
+                            lon = int(lon_s[:3]) + float(lon_s[3:]) / 60.
+                        except ValueError:
+                            # every once in a while the strings are corrupted
+                            continue
+                        if sentence.lat_direction == 'S':
+                            lat *= -1
+                        if sentence.lon_direction == 'W':
+                            lon *= -1
+
+                        hours = int(sentence.timestamp[:2])
+                        minutes = int(sentence.timestamp[2:4])
+                        seconds = float(sentence.timestamp[4:])
+                        day_fraction = (hours + (minutes + (seconds / 60.)) / 60.) / 24.0
+
+                        self.gps_data.append([day_fraction, lat, lon])
+
+                    elif sentence.sen_type == 'RDENS':
+                        # assume that this marker goes with the *next* NMEA location
+                        # output.
+                        self.ensemble_gps_indexes.append([int(sentence.ensemble),
+                                                          len(self.gps_data)])
+                # except (AttributeError,exc):
+                except(AttributeError):
+                    print("While parsing NMEA: ")
+                    # print(exc)
+                    print("Ignoring this NMEA sentence")
+                    continue
+
+        self.ensemble_gps_indexes = np.array(self.ensemble_gps_indexes)
+        self.gps_data = np.array(self.gps_data)
+
 
     def read_nav(self):
         """ Reads NMEA stream data, prepared for transforn to latlon and
@@ -102,7 +161,7 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         fp = open(self.nav_file)
         
         nmea = streamer.NMEAStream(fp)
-        
+
         self.ensemble_gps_indexes = [] # [ensemble #, index into gps_data]
         self.gps_data = [] # [ day_fraction, lat, lon] 
 
@@ -207,8 +266,11 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
                 ii = np.greater(abs(bt_vel),5.0) # identify where velocity is > 5 m/s
                 bt_vel[ii] = np.nan
                 bt_vel = au.interp_nans_1d(bt_vel) # interpolate over nans
-                self.bt_velocity[:,j] = bt_vel   
-           
+                self.bt_velocity[:,j] = bt_vel
+
+        # sometimes bt_vel has 4 components - maybe new file type? dropping for now!
+        self.bt_velocity = self.bt_velocity[:,:3]
+
         if 'bt_range' in ens_fields:
             self.bt_depth = -1.0*np.array([np.mean(self.raw_adcp.bt_range[:Ne],1)])
             
@@ -263,8 +325,8 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
         vN = np.copy(self.velocity[:,:,1]) - np.ones(vbins)*np.array([btN]).T
         vW = np.copy(self.velocity[:,:,2]) - np.ones(vbins)*np.array([btW]).T
         
-        # rotate velocities from ship coordibates
-        if self.raw_adcp.config.coord_sys is 'ship':
+        # rotate velocities from ship coordinates
+        if self.raw_adcp.config.coord_sys == 'ship':
                                     
              # convert ship coord to enu
             delta = self.heading*np.pi/180
@@ -414,12 +476,13 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
             self.heading = au.concatenate_array_w_fill(self.heading,
                                                   (self.n_ensembles,),
                                                   a.heading,
-                                                  (a.n_ensembles,))
+                                                  (a.n_ensembles,),axis=0)
         if self.error_vel is not None:
             self.error_vel = au.concatenate_array_w_fill(self.error_vel,
                                                   (self.n_ensembles,self.n_bins),
                                                   a.error_vel,
-                                                  (a.n_ensembles,a.n_bins))
+                                                  (a.n_ensembles,a.n_bins),axis=0)
+
 
     def average_ensembles(self,ens_to_avg):
         """ Extra variables must be averaged for this subclass
@@ -447,7 +510,43 @@ class ADCPRdiWorkhorseData(adcpy.ADCPTransectData):
     
         return a
          
-         
- 
+    def xy_regrid(self,dxy,dz,xy_srs=None,pline=None,sort=False,kind='bin average',
+                  sd_drop=0,mtime_regrid=False,sd_drop_alt=0,nonlinear=False):
+
+        (xy, xy_new, z, z_new, nn, pre_calcs) = \
+        super(ADCPRdiWorkhorseData,self).xy_regrid(dxy, dz, xy_srs = xy_srs, pline = pline, sort = sort,
+                    kind = kind, sd_drop = sd_drop, mtime_regrid = mtime_regrid, nonlinear = nonlinear)
+
+        # seems like RDI-specifc vars like bottom track stuff should go here and not in transect class?
+
+        if self.error_vel is not None:
+            error_vel_interp = self.error_vel
+            self.error_vel = au.xy_regrid(error_vel_interp,xy,xy_new,
+                                           pre_calcs=pre_calcs,kind=kind, sd_drop=sd_drop)
+        return (xy, xy_new, z, z_new, nn, pre_calcs)
+
+
+    def t_regrid(self,dt,dz,sd_drop=0,sd_drop_alt=0):
+
+        (t, t_new, z, z_new, dummy, pre_calcs) = super(ADCPRdiWorkhorseData,self).t_regrid(dt,dz,sd_drop,sd_drop_alt)
+
+        if self.error_vel is not None:
+            error_vel_interp = self.error_vel
+            self.error_vel = au.xy_regrid(error_vel_interp, t ,t_new, z, z_new,pre_calcs,
+                                            kind='bin average', sd_drop=sd_drop)
+
+            # return vars such that sub-classes with more xy dimension variables can regrid
+            return (t, t_new, z, z_new, None, pre_calcs)
+
+
+    def split_by_ensemble(self, split_nums, extra_fields=[]):
+        a = super(ADCPRdiWorkhorseData, self).split_by_ensemble(split_nums,
+                                                             extra_fields=extra_fields + ['error_vel', 'heading'])
+
+
+    def crop(self, l_bound, u_bound, extra_fields=[], axis='ensemble'):
+        a = super(ADCPRdiWorkhorseData, self).crop(l_bound, u_bound,
+                                                extra_fields=extra_fields + ['error_vel', 'heading'],
+                                                axis=axis)
 
 

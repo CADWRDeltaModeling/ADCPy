@@ -1710,7 +1710,7 @@ def remove_values(nparray,rm,axis=None,elev=None,interp_holes=False,warning_frac
     return new_array
 
 
-def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
+def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape,axis=None):
     """
     Appends array ar2 to ar1 along the matching dimension given in shapes. If
     either of the arrays are singular or None, the returned array will be
@@ -1721,7 +1721,7 @@ def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
         ar2 = numpy array to append to ar1
         ar2_shape = desired shape of ar1 value(s)
     Output:
-        numpy array or shape ar1+ar2
+        numpy array of shape ar1+ar2
     """
     a1 = check_if_array_and_expand(ar1,ar1_shape)
     a2 = check_if_array_and_expand(ar2,ar2_shape)
@@ -1730,11 +1730,12 @@ def concatenate_array_w_fill(ar1,ar1_shape,ar2,ar2_shape):
     if len(s1) != len(s2):
         print("append_array_w_fill: input array must have the same number of dimensions")
         raise ValueError
-    axis = None
-    for i in range(len(s1)):
-        if s1[i] != s2[i]:
-            axis = i
-            break
+    if axis is None:
+        for i in range(len(s1)):
+            # looking for the one non-equal axis to concatenate
+            if s1[i] != s2[i]:
+                axis = i
+                break
     if axis is not None:
         #print 'a1 shape:',np.shape(a1)
         #print 'a2 shape:',np.shape(a2)
@@ -2602,7 +2603,7 @@ def un_flip_bin_average(xy_range,z,avg):
         z_bins = z grid edge positions, shape [zb]
         avg = list or arrays to be conditionally flipped
     Returns:
-        list of input arrays avg,conditinally flipped
+        list of input arrays avg,conditionally flipped
     """
     flipped = []
     ud = (xy_range[-1]-xy_range[0]) < 0
